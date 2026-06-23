@@ -19,6 +19,8 @@
 - Modify `package.json`: compile `PetState.swift` with the app and add `native:test`.
 - Modify `README.md`: document the pet Todo behavior and local run/test commands.
 
+Future personalization note: this plan implements the first dog-den skin only. Keep the core state model focused on generic reward and companion mood concepts so later skins can support cats, birds, plants, or a user-uploaded pet photo without rewriting task logic.
+
 ---
 
 ### Task 1: Add Testable Pet State Rules
@@ -738,6 +740,7 @@ Add these bullets under `## MVP Behavior`:
 - Completion rewards trigger a short "walk the dog" state only after completion writes back to Lark Base.
 - P0 and overdue tasks use gentle dog reminder copy instead of punitive alerts.
 - Dragging the small dog onto a visible Lark/Feishu window can trigger screen sniffing; the app still asks for confirmation before creating tasks.
+- The first companion skin is dog-based; future skins can use cats, birds, plants, or user-uploaded pet photos while reusing the same completion reward model.
 ```
 
 - [ ] **Step 2: Add local-state note**

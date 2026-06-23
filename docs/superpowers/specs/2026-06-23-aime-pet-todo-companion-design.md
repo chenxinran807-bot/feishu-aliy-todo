@@ -27,6 +27,19 @@ The pet layer adds:
 
 The MVP does not include shops, outfits, complex levels, streak pressure, penalties, or a full game loop.
 
+## Future Personalization
+
+The first version uses a dog because it matches the "kibble" and "walk" metaphors, but the companion should not be dog-only long term.
+
+Future versions should support:
+
+- Choosing other companion types, such as cats, birds, rabbits, or plants.
+- Swapping the reward metaphor per companion type. For example, cats receive treats, birds collect seeds, and plants get watered after task completion.
+- Uploading a photo of the user's own pet and turning it into a lightweight animated companion style.
+- Keeping the companion skin local by default, with explicit user approval before any uploaded pet image is sent to an external model or service.
+
+This is out of MVP scope. The MVP should still keep pet state generic enough that later UI skins can reuse the same task reward model.
+
 ## Core Interaction Model
 
 ### New Task
@@ -128,6 +141,8 @@ Add local pet state:
 - `intimacy`: lightweight local score, capped and optional in UI.
 - `dogMood`: `idle`, `foundTask`, `readyToWalk`, `walking`, `happyReturn`, `concerned`, `sniffing`.
 - `lastRewardedTaskIds`: local set to avoid double-feeding the same completed task.
+
+Although the first UI names this as dog state, the implementation should avoid baking dog-only assumptions into core task reward logic. The generic concepts are pending reward, completion reward, companion mood, and local companion profile.
 
 Completion remains authoritative through Lark writeback. Pet state is local and recoverable.
 
