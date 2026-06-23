@@ -3,19 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "description": "Mac-first desktop task companion for Aime todo monitoring.",
-  "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "dev:electron": "concurrently -k \"npm run dev\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
-    "build": "tsc -p tsconfig.node.json && vite build",
+    "dev": "vite --host 127.0.0.1 --port 6173 --strictPort",
+    "native:build": "mkdir -p .build/module-cache && CLANG_MODULE_CACHE_PATH=\"$PWD/.build/module-cache\" swiftc -target arm64-apple-macosx15.0 native/AimeCompanion/main.swift -framework AppKit -framework WebKit -o .build/aime-companion",
+    "native:run": "npm run build && ./.build/aime-companion \"$PWD/dist/index.html\"",
+    "build": "vite build && npm run native:build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
-    "electron": "^41.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -25,12 +24,9 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "concurrently": "^9.0.0",
-    "cross-env": "^10.0.0",
     "jsdom": "^29.1.1",
     "typescript": "^5.0.0",
     "vite": "^7.0.0",
-    "vitest": "^4.0.0",
-    "wait-on": "^9.0.0"
+    "vitest": "^4.0.0"
   }
 }

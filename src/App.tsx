@@ -82,7 +82,10 @@ export function App() {
         todayTasks={view.todayTasks}
         laterTasks={view.laterTasks}
         tracks={view.tracks}
-        onCollapse={() => setExpanded(false)}
+        onCollapse={() => {
+          void desktopApi.setWindowMode("widget");
+          setExpanded(false);
+        }}
         onComplete={(taskId) => void completeTask(taskId)}
         onTomorrow={(taskId) => void moveToTomorrow(taskId)}
         onHide={(taskId) => void hideTask(taskId)}
@@ -99,8 +102,14 @@ export function App() {
       tracks={view.tracks}
       syncState={snapshot.syncState}
       syncMessage={snapshot.syncMessage}
-      onExpand={() => setExpanded(true)}
-      onOpenFull={() => void desktopApi.openFullWindow()}
+      onExpand={() => {
+        void desktopApi.setWindowMode("peek");
+        setExpanded(true);
+      }}
+      onOpenFull={() => {
+        void desktopApi.setWindowMode("full");
+        void desktopApi.openFullWindow();
+      }}
     />
   );
 }

@@ -1,6 +1,8 @@
 .superpowers/
 .worktrees/
 .npm-cache/
+.electron-cache/
+.build/
 node_modules/
 dist/
 dist-electron/
