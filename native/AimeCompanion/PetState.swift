@@ -59,7 +59,7 @@ struct PetState: Codable, Equatable {
         state.overdueCount = overdue.count
         state.nextTaskId = next?.id
 
-        if state.dogMood == .walking || state.dogMood == .happyReturn {
+        if state.dogMood == .walking || state.dogMood == .happyReturn || state.dogMood == .sniffing {
             return state
         }
         if !overdue.isEmpty || !p0.isEmpty {

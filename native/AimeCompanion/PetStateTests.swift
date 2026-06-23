@@ -124,6 +124,14 @@ struct PetStateTests {
         )
         assertEqual(persistedHappyReturn.normalizedAfterLaunch().dogMood, .idle, "launch should recover from transient happy-return mood")
 
+        let sniffingSnapshot = PetState.derive(
+            tasks: tasks,
+            preferences: preferences,
+            previous: PetState(dogMood: .sniffing),
+            today: today
+        )
+        assertEqual(sniffingSnapshot.dogMood, .sniffing, "derive should not overwrite an active sniffing mood")
+
         print("PetStateTests passed")
     }
 }

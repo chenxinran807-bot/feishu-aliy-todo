@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Vision
+import CoreGraphics
 
 final class AimeActionButton: NSButton {
     var payload: String = ""
@@ -12,6 +13,38 @@ final class AimeMenuItem: NSMenuItem {
 
 final class AimeMenuButton: NSButton {
     var payload: String = ""
+}
+
+final class PetDragButton: NSButton {
+    var onDragEnded: ((NSPoint) -> Void)?
+    private var didDrag = false
+    private var mouseDownLocation: NSPoint = .zero
+
+    override func mouseDown(with event: NSEvent) {
+        didDrag = false
+        mouseDownLocation = event.locationInWindow
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let location = event.locationInWindow
+        let deltaX = location.x - mouseDownLocation.x
+        let deltaY = location.y - mouseDownLocation.y
+        guard didDrag || hypot(deltaX, deltaY) > 4 else { return }
+        didDrag = true
+        if isEnabled {
+            window?.performDrag(with: event)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard isEnabled else { return }
+        if didDrag {
+            onDragEnded?(NSEvent.mouseLocation)
+        } else {
+            guard let target, let action else { return }
+            NSApp.sendAction(action, to: target, from: self)
+        }
+    }
 }
 
 final class ResizeHandleView: NSView {
@@ -213,7 +246,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func compactWidget(openCount: Int, overdueCount: Int) -> NSView {
-        let button = NSButton(title: "", target: self, action: #selector(expandWidget))
+        let button = PetDragButton(title: "", target: self, action: #selector(expandWidget))
+        button.onDragEnded = { [weak self] point in
+            self?.handlePetDragEnded(at: point)
+        }
         button.isBordered = false
         button.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1018,6 +1054,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         scanScreenForTasks(dialogTitle: "从屏幕识别待办", skipDuplicate: false)
     }
 
+    private func handlePetDragEnded(at point: NSPoint) {
+        guard preferences.displayStyle == "cute" else { return }
+        petState.dogMood = .sniffing
+        savePetState()
+        reloadTasks()
+
+        if isLikelyLarkWindow(at: point) {
+            scanScreenForTasks(dialogTitle: "小狗从飞书窗口闻到可能待办", skipDuplicate: false)
+        } else {
+            showMessage(
+                "小狗准备好了",
+                detail: "把小狗拖到飞书聊天或会议纪要窗口附近触发当前屏幕识别。"
+            )
+        }
+    }
+
     @objc private func toggleScreenMonitor() {
         if screenMonitorTimer == nil {
             lastRecognizedScreenText = ""
@@ -1044,20 +1096,83 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func scanScreenForTasks(dialogTitle: String, skipDuplicate: Bool) {
         let screenshotURL = captureCurrentScreen()
         guard let screenshotURL else {
+            finishSniffing(as: .idle)
             showMessage("无法截取屏幕", detail: "请确认系统已允许屏幕录制权限。")
             return
         }
 
         let recognizedText = recognizeText(in: screenshotURL)
         let compactText = compactTaskTitle(recognizedText)
-        guard !compactText.isEmpty else { return }
+        guard !compactText.isEmpty else {
+            finishSniffing(as: .idle)
+            return
+        }
         if skipDuplicate {
-            guard compactText != lastRecognizedScreenText else { return }
+            guard compactText != lastRecognizedScreenText else {
+                finishSniffing(as: .idle)
+                return
+            }
         }
         lastRecognizedScreenText = compactText
 
-        guard let draft = taskDraftDialog(title: dialogTitle, initialText: recognizedText) else { return }
+        guard let draft = taskDraftDialog(title: dialogTitle, initialText: recognizedText) else {
+            finishSniffing(as: .idle)
+            return
+        }
         createTask(title: draft.title, dueDate: draft.dueDate, project: draft.project)
+        finishSniffing(as: .foundTask)
+    }
+
+    private func finishSniffing(as mood: DogMood) {
+        guard petState.dogMood == .sniffing else { return }
+        petState.dogMood = mood
+        savePetState()
+        reloadTasks()
+    }
+
+    private func isLikelyLarkWindow(at point: NSPoint) -> Bool {
+        guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return false
+        }
+
+        let keywordTargets = ["lark", "feishu", "飞书"]
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) else { return false }
+        let windowListPoint = NSPoint(
+            x: point.x,
+            y: screen.frame.maxY - point.y + screen.frame.minY
+        )
+
+        func asCGFloat(_ any: Any?) -> CGFloat? {
+            if let value = any as? NSNumber { return CGFloat(truncating: value) }
+            if let value = any as? CGFloat { return value }
+            if let value = any as? Double { return CGFloat(value) }
+            if let value = any as? Int { return CGFloat(value) }
+            return nil
+        }
+
+        for window in windows {
+            let ownerName = window[kCGWindowOwnerName as String] as? String ?? ""
+            let windowName = window[kCGWindowName as String] as? String ?? ""
+            let searchSource = "\(ownerName) \(windowName)".lowercased()
+            guard keywordTargets.contains(where: { searchSource.contains($0) }) else { continue }
+
+            guard
+                let frameValue = window[kCGWindowBounds as String],
+                let frameDict = frameValue as? [String: Any],
+                let x = asCGFloat(frameDict["X"]),
+                let y = asCGFloat(frameDict["Y"]),
+                let width = asCGFloat(frameDict["Width"]),
+                let height = asCGFloat(frameDict["Height"])
+            else {
+                continue
+            }
+
+            let windowRect = CGRect(x: x, y: y, width: width, height: height)
+            if windowRect.contains(CGPoint(x: windowListPoint.x, y: windowListPoint.y)) {
+                return true
+            }
+        }
+        return false
     }
 
     @objc private func openAimeBase() {
