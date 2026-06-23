@@ -11,6 +11,11 @@ struct AimeTask: Decodable {
     let status: String
     let dueDate: String?
     let project: String?
+    let sourceUrl: String?
+}
+
+final class AimeActionButton: NSButton {
+    var payload: String = ""
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -130,10 +135,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let task {
             stack.addArrangedSubview(label(task.title, size: 14, weight: .semibold))
             stack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 12, color: mutedColor()))
+            stack.addArrangedSubview(actionRow(for: task))
         } else {
             stack.addArrangedSubview(label("目前没有未完成任务", size: 14, weight: .semibold))
         }
         return card(stack)
+    }
+
+    private func actionRow(for task: AimeTask) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+
+        if let sourceUrl = task.sourceUrl, !sourceUrl.isEmpty {
+            row.addArrangedSubview(actionButton("打开", representedObject: sourceUrl, action: #selector(openTaskSource(_:))))
+        }
+        row.addArrangedSubview(actionButton("明天", representedObject: task.id, action: #selector(moveTaskToTomorrow(_:))))
+        row.addArrangedSubview(actionButton("完成", representedObject: task.id, action: #selector(completeTask(_:))))
+        return row
+    }
+
+    private func actionButton(_ title: String, representedObject: String, action: Selector) -> NSButton {
+        let button = AimeActionButton(title: title, target: self, action: action)
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.payload = representedObject
+        return button
     }
 
     private func projectProgressView(tasks: [AimeTask], projectName: String) -> NSView {
@@ -218,8 +246,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             print("Aime task feed unavailable at \(taskFeedPath): \(error.localizedDescription)")
             return [
-                AimeTask(id: "sample-1", title: "运行 npm run lark:pull 同步 Aime Base", status: "open", dueDate: todayKey(), project: "AI探索"),
-                AimeTask(id: "sample-2", title: "确认桌面小组件可见", status: "done", dueDate: todayKey(), project: "AI探索"),
+                AimeTask(id: "sample-1", title: "运行 npm run lark:pull 同步 Aime Base", status: "open", dueDate: todayKey(), project: "AI探索", sourceUrl: nil),
+                AimeTask(id: "sample-2", title: "确认桌面小组件可见", status: "done", dueDate: todayKey(), project: "AI探索", sourceUrl: nil),
             ]
         }
     }
@@ -247,8 +275,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func refreshClicked() {
+        pullLatestTasks()
         reloadTasks()
         showWidget()
+    }
+
+    @objc private func openTaskSource(_ sender: NSButton) {
+        guard
+            let urlString = (sender as? AimeActionButton)?.payload,
+            let url = URL(string: urlString)
+        else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    @objc private func completeTask(_ sender: NSButton) {
+        guard let recordId = (sender as? AimeActionButton)?.payload else { return }
+        runSyncCommand(["complete", "--record-id", recordId])
+        pullLatestTasks()
+        reloadTasks()
+    }
+
+    @objc private func moveTaskToTomorrow(_ sender: NSButton) {
+        guard let recordId = (sender as? AimeActionButton)?.payload else { return }
+        runSyncCommand(["reschedule", "--record-id", recordId, "--due-date", tomorrowKey()])
+        pullLatestTasks()
+        reloadTasks()
     }
 
     @objc private func quit() {
@@ -264,8 +317,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return "\(currentDirectory)/tmp/aime-tasks.json"
     }
 
+    private func pullLatestTasks() {
+        runSyncCommand(["pull", "--out", "tmp/aime-tasks.json"])
+    }
+
+    private func runSyncCommand(_ arguments: [String]) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        process.arguments = ["node", "scripts/aime-lark-sync.mjs"] + arguments
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            if process.terminationStatus != 0 {
+                print("Aime sync command failed: \(arguments.joined(separator: " "))")
+            }
+        } catch {
+            print("Aime sync command could not run: \(error.localizedDescription)")
+        }
+    }
+
+    private func tomorrowKey() -> String {
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: tomorrow)
+    }
+
     private func initialWidgetFrame() -> NSRect {
-        let size = NSSize(width: 380, height: 260)
+        let size = NSSize(width: 420, height: 330)
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         return NSRect(
             x: visibleFrame.maxX - size.width - 32,
