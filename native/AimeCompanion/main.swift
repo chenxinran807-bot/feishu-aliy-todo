@@ -36,6 +36,10 @@ final class AimeMenuItem: NSMenuItem {
     var payload: String = ""
 }
 
+final class AimeMenuButton: NSButton {
+    var payload: String = ""
+}
+
 final class ResizeHandleView: NSView {
     var onResizeEnded: (() -> Void)?
     private var initialMouseLocation: NSPoint = .zero
@@ -332,23 +336,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         collapse.bezelStyle = .rounded
         collapse.controlSize = .small
 
-        let more = NSPopUpButton(frame: .zero, pullsDown: true)
-        more.controlSize = .small
-        more.addItem(withTitle: "更多")
-        addMenuItem("新增待办", to: more, action: #selector(addTaskClicked))
-        addMenuItem("识别屏幕", to: more, action: #selector(captureScreenClicked))
-        addMenuItem(screenMonitorTimer == nil ? "开始实时识别" : "停止实时识别", to: more, action: #selector(toggleScreenMonitor))
-        more.menu?.addItem(NSMenuItem.separator())
-        addMenuItem("打开多维表格", to: more, action: #selector(openAimeBase))
-        addMenuItem("打开 Aime 助手", to: more, action: #selector(openAimeAssistant))
-        more.menu?.addItem(NSMenuItem.separator())
-        addPayloadMenuItem("风格：简洁", payload: "minimal", to: more, action: #selector(changeDisplayStyle(_:)))
-        addPayloadMenuItem("风格：精致", payload: "refined", to: more, action: #selector(changeDisplayStyle(_:)))
-        addPayloadMenuItem("风格：可爱", payload: "cute", to: more, action: #selector(changeDisplayStyle(_:)))
-        more.menu?.addItem(NSMenuItem.separator())
-        addMenuItem(showingHiddenTasks ? "收起隐藏任务" : "显示隐藏任务", to: more, action: #selector(toggleShowHiddenTasks))
-        addMenuItem("重置面板尺寸", to: more, action: #selector(resetExpandedPanelSize))
-        addMenuItem("刷新", to: more, action: #selector(refreshClicked))
+        let more = menuButton(title: "更多", action: #selector(showHeaderMoreMenu(_:)))
 
         row.addArrangedSubview(orb)
         row.addArrangedSubview(titleStack)
@@ -357,10 +345,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return row
     }
 
-    private func addMenuItem(_ title: String, to popup: NSPopUpButton, action: Selector) {
+    private func menuButton(title: String, action: Selector, payload: String = "") -> AimeMenuButton {
+        let button = AimeMenuButton(title: title, target: self, action: action)
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.payload = payload
+        return button
+    }
+
+    private func addMenuItem(_ title: String, to menu: NSMenu, action: Selector) {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
-        popup.menu?.addItem(item)
+        menu.addItem(item)
     }
 
     private func filterView(tasks: [AimeTask]) -> NSView {
@@ -502,36 +498,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         row.addArrangedSubview(actionButton("完成", representedObject: task.id, action: #selector(completeTask(_:))))
         row.addArrangedSubview(actionButton("改时间", representedObject: task.id, action: #selector(rescheduleTask(_:))))
-        row.addArrangedSubview(taskMoreMenu(for: task))
+        row.addArrangedSubview(menuButton(title: "更多", action: #selector(showTaskMoreMenu(_:)), payload: task.id))
         return row
     }
 
-    private func taskMoreMenu(for task: AimeTask) -> NSPopUpButton {
-        let popup = NSPopUpButton(frame: .zero, pullsDown: true)
-        popup.controlSize = .small
-        popup.addItem(withTitle: "更多")
-
-        if let sourceUrl = task.sourceUrl, !sourceUrl.isEmpty {
-            addPayloadMenuItem("打开来源", payload: sourceUrl, to: popup, action: #selector(openTaskSourceFromMenu(_:)))
-            popup.menu?.addItem(NSMenuItem.separator())
-        }
-
-        addPayloadMenuItem(preferences.pinnedTaskIds.contains(task.id) ? "取消置顶" : "置顶", payload: task.id, to: popup, action: #selector(togglePinTaskFromMenu(_:)))
-        popup.menu?.addItem(NSMenuItem.separator())
-        ["P0", "P1", "P2"].forEach { priority in
-            addPayloadMenuItem("标记 \(priority)", payload: "\(task.id)|\(priority)", to: popup, action: #selector(priorityChangedFromMenu(_:)))
-        }
-        popup.menu?.addItem(NSMenuItem.separator())
-        addPayloadMenuItem(preferences.hiddenTaskIds.contains(task.id) ? "取消隐藏" : "隐藏", payload: task.id, to: popup, action: #selector(toggleHideTaskFromMenu(_:)))
-        addPayloadMenuItem("忽略", payload: task.id, to: popup, action: #selector(ignoreTaskFromMenu(_:)))
-        return popup
-    }
-
-    private func addPayloadMenuItem(_ title: String, payload: String, to popup: NSPopUpButton, action: Selector) {
+    private func addPayloadMenuItem(_ title: String, payload: String, to menu: NSMenu, action: Selector) {
         let item = AimeMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         item.payload = payload
-        popup.menu?.addItem(item)
+        menu.addItem(item)
     }
 
     private func actionButton(_ title: String, representedObject: String, action: Selector) -> NSButton {
@@ -723,6 +698,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         pullLatestTasks()
         reloadTasks()
         showWidget()
+    }
+
+    @objc private func showHeaderMoreMenu(_ sender: AimeMenuButton) {
+        let menu = NSMenu()
+        addMenuItem("新增待办", to: menu, action: #selector(addTaskClicked))
+        addMenuItem("识别屏幕", to: menu, action: #selector(captureScreenClicked))
+        addMenuItem(screenMonitorTimer == nil ? "开始实时识别" : "停止实时识别", to: menu, action: #selector(toggleScreenMonitor))
+        menu.addItem(NSMenuItem.separator())
+        addMenuItem("打开多维表格", to: menu, action: #selector(openAimeBase))
+        addMenuItem("打开 Aime 助手", to: menu, action: #selector(openAimeAssistant))
+        menu.addItem(NSMenuItem.separator())
+        addPayloadMenuItem("风格：简洁", payload: "minimal", to: menu, action: #selector(changeDisplayStyle(_:)))
+        addPayloadMenuItem("风格：精致", payload: "refined", to: menu, action: #selector(changeDisplayStyle(_:)))
+        addPayloadMenuItem("风格：可爱", payload: "cute", to: menu, action: #selector(changeDisplayStyle(_:)))
+        menu.addItem(NSMenuItem.separator())
+        addMenuItem(showingHiddenTasks ? "收起隐藏任务" : "显示隐藏任务", to: menu, action: #selector(toggleShowHiddenTasks))
+        addMenuItem("重置面板尺寸", to: menu, action: #selector(resetExpandedPanelSize))
+        addMenuItem("刷新", to: menu, action: #selector(refreshClicked))
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 2), in: sender)
+    }
+
+    @objc private func showTaskMoreMenu(_ sender: AimeMenuButton) {
+        let tasks = loadTasks()
+        guard let task = tasks.first(where: { $0.id == sender.payload }) else { return }
+
+        let menu = NSMenu()
+        if let sourceUrl = task.sourceUrl, !sourceUrl.isEmpty {
+            addPayloadMenuItem("打开来源", payload: sourceUrl, to: menu, action: #selector(openTaskSourceFromMenu(_:)))
+            menu.addItem(NSMenuItem.separator())
+        }
+
+        addPayloadMenuItem(preferences.pinnedTaskIds.contains(task.id) ? "取消置顶" : "置顶", payload: task.id, to: menu, action: #selector(togglePinTaskFromMenu(_:)))
+        menu.addItem(NSMenuItem.separator())
+        ["P0", "P1", "P2"].forEach { priority in
+            addPayloadMenuItem("标记 \(priority)", payload: "\(task.id)|\(priority)", to: menu, action: #selector(priorityChangedFromMenu(_:)))
+        }
+        menu.addItem(NSMenuItem.separator())
+        addPayloadMenuItem(preferences.hiddenTaskIds.contains(task.id) ? "取消隐藏" : "隐藏", payload: task.id, to: menu, action: #selector(toggleHideTaskFromMenu(_:)))
+        addPayloadMenuItem("忽略", payload: task.id, to: menu, action: #selector(ignoreTaskFromMenu(_:)))
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 2), in: sender)
     }
 
     private func startAutoRefresh() {
