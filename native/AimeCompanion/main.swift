@@ -497,7 +497,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         row.alignment = .centerY
         row.spacing = 10
 
-        let orb = label(avatarText(), size: 17, weight: .bold, color: avatarTextColor())
+        let avatar = preferences.displayStyle == "cute" ? dogFace() : avatarText()
+        let avatarSize: CGFloat = preferences.displayStyle == "cute" ? 24 : 17
+        let orb = label(avatar, size: avatarSize, weight: .bold, color: avatarTextColor())
         orb.alignment = .center
         orb.wantsLayer = true
         orb.layer?.backgroundColor = avatarColor().cgColor
@@ -812,7 +814,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func avatarColor() -> NSColor {
         switch preferences.displayStyle {
         case "minimal": return NSColor(calibratedWhite: 0.16, alpha: 1)
-        case "cute": return NSColor(calibratedRed: 0.95, green: 0.45, blue: 0.68, alpha: 1)
+        case "cute": return NSColor(calibratedRed: 1, green: 0.88, blue: 0.74, alpha: 1)
         default: return NSColor(calibratedRed: 0.14, green: 0.36, blue: 0.32, alpha: 1)
         }
     }
