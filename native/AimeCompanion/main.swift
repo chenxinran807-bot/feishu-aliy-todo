@@ -28,6 +28,10 @@ final class AimeActionButton: NSButton {
     var payload: String = ""
 }
 
+final class AimeMenuItem: NSMenuItem {
+    var payload: String = ""
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let defaultBaseURL = "https://bytedance.larkoffice.com/base/F4k1bKUkRaIafPsKxP2cVAyEnwJ?table=tblllGcOFXODLI5I&view=vewBgeF8ZA"
     private let defaultAimeAssistantURL = "https://applink.feishu.cn/client/chat/open?openChatId=oc_31661171e477fd90c1d62de8e2f1a84d"
@@ -118,10 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
         rootStack.addArrangedSubview(filterView(tasks: tasks))
-        rootStack.addArrangedSubview(projectProgressView(tasks: tasks, projectName: "AI试穿"))
-        rootStack.addArrangedSubview(projectProgressView(tasks: tasks, projectName: "AI穿搭"))
         rootStack.addArrangedSubview(taskListView(sortedTasks))
-        rootStack.addArrangedSubview(footerView(tasksCount: tasks.count, hiddenCount: preferences.hiddenTaskIds.count))
     }
 
     private func compactWidget(openCount: Int, overdueCount: Int) -> NSView {
@@ -231,10 +232,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         collapse.bezelStyle = .rounded
         collapse.controlSize = .small
 
+        let more = NSPopUpButton(frame: .zero, pullsDown: true)
+        more.controlSize = .small
+        more.addItem(withTitle: "更多")
+        addMenuItem("新增待办", to: more, action: #selector(addTaskClicked))
+        addMenuItem("识别屏幕", to: more, action: #selector(captureScreenClicked))
+        more.menu?.addItem(NSMenuItem.separator())
+        addMenuItem("打开多维表格", to: more, action: #selector(openAimeBase))
+        addMenuItem("打开 Aime 助手", to: more, action: #selector(openAimeAssistant))
+        more.menu?.addItem(NSMenuItem.separator())
+        addMenuItem(showingHiddenTasks ? "收起隐藏任务" : "显示隐藏任务", to: more, action: #selector(toggleShowHiddenTasks))
+        addMenuItem("刷新", to: more, action: #selector(refreshClicked))
+
         row.addArrangedSubview(orb)
         row.addArrangedSubview(titleStack)
+        row.addArrangedSubview(more)
         row.addArrangedSubview(collapse)
         return row
+    }
+
+    private func addMenuItem(_ title: String, to popup: NSPopUpButton, action: Selector) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        popup.menu?.addItem(item)
     }
 
     private func filterView(tasks: [AimeTask]) -> NSView {
@@ -270,6 +290,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func popup(items: [(String, String)], selected: String, action: Selector) -> NSPopUpButton {
         let popup = NSPopUpButton()
         popup.controlSize = .small
+        popup.translatesAutoresizingMaskIntoConstraints = false
+        popup.widthAnchor.constraint(equalToConstant: 106).isActive = true
         popup.target = self
         popup.action = action
         items.forEach { title, value in
@@ -287,10 +309,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
-        stack.addArrangedSubview(label("全部待办（上下滚动）", size: 12, weight: .medium, color: mutedColor()))
+        stack.addArrangedSubview(label("待办", size: 12, weight: .medium, color: mutedColor()))
 
         if tasks.isEmpty {
-            stack.addArrangedSubview(card(label("目前没有未完成任务", size: 14, weight: .semibold), width: 388))
+            stack.addArrangedSubview(card(label("当前筛选下没有任务", size: 14, weight: .semibold), width: 338))
         } else {
             stack.addArrangedSubview(scrollableTaskList(tasks))
         }
@@ -318,9 +340,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         scrollView.documentView = documentStack
         NSLayoutConstraint.activate([
-            scrollView.widthAnchor.constraint(equalToConstant: 402),
-            scrollView.heightAnchor.constraint(equalToConstant: 330),
-            documentStack.widthAnchor.constraint(equalToConstant: 388),
+            scrollView.widthAnchor.constraint(equalToConstant: 352),
+            scrollView.heightAnchor.constraint(equalToConstant: 360),
+            documentStack.widthAnchor.constraint(equalToConstant: 338),
         ])
 
         return scrollView
@@ -344,53 +366,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stack.addArrangedSubview(label(title, size: 13, weight: isPinned ? .bold : .semibold, color: titleColor(priority: priority, isPinned: isPinned)))
         stack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 11, color: mutedColor()))
         stack.addArrangedSubview(actionRow(for: task))
-        return card(stack, width: 388, priority: priority, isPinned: isPinned)
+        return card(stack, width: 338, priority: priority, isPinned: isPinned)
     }
 
     private func actionRow(for task: AimeTask) -> NSView {
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 5
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
 
-        let primaryRow = NSStackView()
-        primaryRow.orientation = .horizontal
-        primaryRow.alignment = .centerY
-        primaryRow.spacing = 8
-
-        let secondaryRow = NSStackView()
-        secondaryRow.orientation = .horizontal
-        secondaryRow.alignment = .centerY
-        secondaryRow.spacing = 8
-
-        if let sourceUrl = task.sourceUrl, !sourceUrl.isEmpty {
-            primaryRow.addArrangedSubview(actionButton("打开", representedObject: sourceUrl, action: #selector(openTaskSource(_:))))
-        }
-        primaryRow.addArrangedSubview(actionButton("改时间", representedObject: task.id, action: #selector(rescheduleTask(_:))))
-        primaryRow.addArrangedSubview(actionButton("完成", representedObject: task.id, action: #selector(completeTask(_:))))
-
-        secondaryRow.addArrangedSubview(actionButton(preferences.pinnedTaskIds.contains(task.id) ? "取消置顶" : "置顶", representedObject: task.id, action: #selector(togglePinTask(_:))))
-        secondaryRow.addArrangedSubview(priorityMenu(for: task))
-        secondaryRow.addArrangedSubview(actionButton(preferences.hiddenTaskIds.contains(task.id) ? "取消隐藏" : "隐藏", representedObject: task.id, action: #selector(toggleHideTask(_:))))
-        secondaryRow.addArrangedSubview(actionButton("忽略", representedObject: task.id, action: #selector(ignoreTask(_:))))
-
-        stack.addArrangedSubview(primaryRow)
-        stack.addArrangedSubview(secondaryRow)
-        return stack
+        row.addArrangedSubview(actionButton("完成", representedObject: task.id, action: #selector(completeTask(_:))))
+        row.addArrangedSubview(actionButton("改时间", representedObject: task.id, action: #selector(rescheduleTask(_:))))
+        row.addArrangedSubview(taskMoreMenu(for: task))
+        return row
     }
 
-    private func priorityMenu(for task: AimeTask) -> NSPopUpButton {
-        let menu = NSPopUpButton()
-        menu.controlSize = .small
-        menu.target = self
-        menu.action = #selector(priorityChanged(_:))
-        ["P0", "P1", "P2"].forEach { priority in
-            menu.addItem(withTitle: priority)
-            menu.lastItem?.representedObject = "\(task.id)|\(priority)"
+    private func taskMoreMenu(for task: AimeTask) -> NSPopUpButton {
+        let popup = NSPopUpButton(frame: .zero, pullsDown: true)
+        popup.controlSize = .small
+        popup.addItem(withTitle: "更多")
+
+        if let sourceUrl = task.sourceUrl, !sourceUrl.isEmpty {
+            addPayloadMenuItem("打开来源", payload: sourceUrl, to: popup, action: #selector(openTaskSourceFromMenu(_:)))
+            popup.menu?.addItem(NSMenuItem.separator())
         }
-        let selectedPriority = preferences.priorityByTaskId[task.id] ?? "P2"
-        menu.selectItem(withTitle: selectedPriority)
-        return menu
+
+        addPayloadMenuItem(preferences.pinnedTaskIds.contains(task.id) ? "取消置顶" : "置顶", payload: task.id, to: popup, action: #selector(togglePinTaskFromMenu(_:)))
+        popup.menu?.addItem(NSMenuItem.separator())
+        ["P0", "P1", "P2"].forEach { priority in
+            addPayloadMenuItem("标记 \(priority)", payload: "\(task.id)|\(priority)", to: popup, action: #selector(priorityChangedFromMenu(_:)))
+        }
+        popup.menu?.addItem(NSMenuItem.separator())
+        addPayloadMenuItem(preferences.hiddenTaskIds.contains(task.id) ? "取消隐藏" : "隐藏", payload: task.id, to: popup, action: #selector(toggleHideTaskFromMenu(_:)))
+        addPayloadMenuItem("忽略", payload: task.id, to: popup, action: #selector(ignoreTaskFromMenu(_:)))
+        return popup
+    }
+
+    private func addPayloadMenuItem(_ title: String, payload: String, to popup: NSPopUpButton, action: Selector) {
+        let item = AimeMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.payload = payload
+        popup.menu?.addItem(item)
     }
 
     private func actionButton(_ title: String, representedObject: String, action: Selector) -> NSButton {
@@ -425,61 +441,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stack.addArrangedSubview(title)
         stack.addArrangedSubview(progress)
         stack.addArrangedSubview(label("auto from \(doneCount)/\(projectTasks.count) tasks", size: 11, color: mutedColor()))
-        return stack
-    }
-
-    private func footerView(tasksCount: Int, hiddenCount: Int) -> NSView {
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 6
-
-        let summaryRow = NSStackView()
-        summaryRow.orientation = .horizontal
-        summaryRow.alignment = .centerY
-        summaryRow.spacing = 8
-
-        let actionRow = NSStackView()
-        actionRow.orientation = .horizontal
-        actionRow.alignment = .centerY
-        actionRow.spacing = 8
-
-        let add = NSButton(title: "新增", target: self, action: #selector(addTaskClicked))
-        add.bezelStyle = .rounded
-        add.controlSize = .small
-
-        let screen = NSButton(title: "识别屏幕", target: self, action: #selector(captureScreenClicked))
-        screen.bezelStyle = .rounded
-        screen.controlSize = .small
-
-        let base = NSButton(title: "多维表格", target: self, action: #selector(openAimeBase))
-        base.bezelStyle = .rounded
-        base.controlSize = .small
-
-        let assistant = NSButton(title: "Aime助手", target: self, action: #selector(openAimeAssistant))
-        assistant.bezelStyle = .rounded
-        assistant.controlSize = .small
-
-        let refresh = NSButton(title: "刷新", target: self, action: #selector(refreshClicked))
-        refresh.bezelStyle = .rounded
-        refresh.controlSize = .small
-
-        let hiddenToggle = NSButton(title: showingHiddenTasks ? "隐藏收起" : "显示隐藏", target: self, action: #selector(toggleShowHiddenTasks))
-        hiddenToggle.bezelStyle = .rounded
-        hiddenToggle.controlSize = .small
-        hiddenToggle.isEnabled = hiddenCount > 0
-
-        summaryRow.addArrangedSubview(label("\(tasksCount) tasks from Aime Base", size: 11, color: mutedColor()))
-        summaryRow.addArrangedSubview(label("\(hiddenCount) hidden", size: 11, color: mutedColor()))
-        actionRow.addArrangedSubview(add)
-        actionRow.addArrangedSubview(screen)
-        actionRow.addArrangedSubview(base)
-        actionRow.addArrangedSubview(assistant)
-        actionRow.addArrangedSubview(hiddenToggle)
-        actionRow.addArrangedSubview(refresh)
-
-        stack.addArrangedSubview(summaryRow)
-        stack.addArrangedSubview(actionRow)
         return stack
     }
 
@@ -632,6 +593,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(url)
     }
 
+    @objc private func openTaskSourceFromMenu(_ sender: AimeMenuItem) {
+        openURLString(sender.payload)
+    }
+
     private func openURLString(_ urlString: String) {
         guard let url = URL(string: urlString) else { return }
         NSWorkspace.shared.open(url)
@@ -639,6 +604,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func togglePinTask(_ sender: NSButton) {
         guard let recordId = (sender as? AimeActionButton)?.payload else { return }
+        togglePin(recordId: recordId)
+    }
+
+    @objc private func togglePinTaskFromMenu(_ sender: AimeMenuItem) {
+        togglePin(recordId: sender.payload)
+    }
+
+    @objc private func toggleHideTask(_ sender: NSButton) {
+        guard let recordId = (sender as? AimeActionButton)?.payload else { return }
+        toggleHide(recordId: recordId)
+    }
+
+    @objc private func toggleHideTaskFromMenu(_ sender: AimeMenuItem) {
+        toggleHide(recordId: sender.payload)
+    }
+
+    private func togglePin(recordId: String) {
         if preferences.pinnedTaskIds.contains(recordId) {
             preferences.pinnedTaskIds.remove(recordId)
         } else {
@@ -648,8 +630,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reloadTasks()
     }
 
-    @objc private func toggleHideTask(_ sender: NSButton) {
-        guard let recordId = (sender as? AimeActionButton)?.payload else { return }
+    private func toggleHide(recordId: String) {
         if preferences.hiddenTaskIds.contains(recordId) {
             preferences.hiddenTaskIds.remove(recordId)
         } else {
@@ -664,15 +645,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reloadTasks()
     }
 
-    @objc private func priorityChanged(_ sender: NSPopUpButton) {
-        guard
-            let payload = sender.selectedItem?.representedObject as? String,
-            let separator = payload.firstIndex(of: "|")
-        else {
-            return
-        }
-        let recordId = String(payload[..<separator])
-        let priority = String(payload[payload.index(after: separator)...])
+    @objc private func priorityChangedFromMenu(_ sender: AimeMenuItem) {
+        guard let separator = sender.payload.firstIndex(of: "|") else { return }
+        let recordId = String(sender.payload[..<separator])
+        let priority = String(sender.payload[sender.payload.index(after: separator)...])
         preferences.priorityByTaskId[recordId] = priority
         savePreferences()
         reloadTasks()
@@ -705,6 +681,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func ignoreTask(_ sender: NSButton) {
         guard let recordId = (sender as? AimeActionButton)?.payload else { return }
+        ignore(recordId: recordId)
+    }
+
+    @objc private func ignoreTaskFromMenu(_ sender: AimeMenuItem) {
+        ignore(recordId: sender.payload)
+    }
+
+    private func ignore(recordId: String) {
         runSyncCommand(["ignore", "--record-id", recordId])
         pullLatestTasks()
         reloadTasks()
@@ -1027,7 +1011,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func frameForCurrentMode() -> NSRect {
-        let size = isExpanded ? NSSize(width: 460, height: 650) : NSSize(width: 120, height: 104)
+        let size = isExpanded ? NSSize(width: 400, height: 560) : NSSize(width: 120, height: 104)
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         return NSRect(
             x: visibleFrame.maxX - size.width - 32,

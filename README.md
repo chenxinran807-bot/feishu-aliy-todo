@@ -37,14 +37,13 @@ npm test
 ## MVP Behavior
 
 - Shows a small always-on-top floating badge using a native Swift/AppKit shell.
-- Clicking the badge expands a scrollable task list, sorted by pinned state and due date.
-- Each task supports opening the source link, choosing an exact due date/time, pinning, hiding, and marking complete.
-- The expanded panel and menu bar include shortcuts for the Aime Base and the Aime assistant conversation.
-- The expanded panel supports creating new tasks, ignoring tasks, marking local P0/P1/P2 priority, and filtering by priority, project, and status.
+- Clicking the badge expands a compact task list, sorted by pinned state, priority, and due date.
+- The expanded panel keeps only common actions visible: complete, reschedule, filter, and task-level "more".
+- Less frequent actions live behind "更多": opening sources, pinning, hiding, ignoring, P0/P1/P2 priority, creating tasks, screen recognition, and Aime/Base shortcuts.
 - The "识别屏幕" action captures the current screen, runs local macOS OCR, and lets you confirm/edit a new task before writing to Base.
 - Completion status and due date/time are written back to Lark Base.
 - Pinning, hidden state, P0/P1/P2 priority, and filter preferences are stored locally on this Mac.
-- Long-term project progress is shown as native progress bars, currently calculated from completed tasks per project.
+- Long-term project progress logic is retained but no longer shown in the default compact panel.
 
 The Aime Base shortcut defaults to the current Base URL. The assistant shortcut defaults to this chat:
 
