@@ -36,8 +36,8 @@ npm test
 
 ## MVP Behavior
 
-- Shows an always-on-top floating widget using a native Swift/AppKit shell.
-- Shows all open tasks in a scrollable list, sorted by pinned state and due date.
+- Shows a small always-on-top floating badge using a native Swift/AppKit shell.
+- Clicking the badge expands a scrollable task list, sorted by pinned state and due date.
 - Each task supports opening the source link, choosing an exact due date/time, pinning, hiding, and marking complete.
 - Completion status and due date/time are written back to Lark Base.
 - Pinning, hidden state, and the "show hidden" desktop view are stored locally on this Mac.

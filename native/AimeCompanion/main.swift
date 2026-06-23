@@ -30,12 +30,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var taskFeedPath: String = ""
     private var preferences = LocalPreferences()
     private var showingHiddenTasks = false
+    private var isExpanded = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         taskFeedPath = resolveTaskFeedPath()
 
-        let frame = initialWidgetFrame()
+        let frame = frameForCurrentMode()
         window = NSWindow(
             contentRect: frame,
             styleMask: [.borderless],
@@ -48,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         window.isMovableByWindowBackground = true
-        window.title = "Aime"
+        window.title = "Aime Task Companion"
         window.contentView = buildContentView(frame: frame)
 
         reloadTasks()
@@ -101,11 +102,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let sortedOpenTasks = sortOpenTasks(visibleOpenTasks)
 
+        if !isExpanded {
+            rootStack.addArrangedSubview(compactWidget(openCount: openTasks.count, overdueCount: overdueTasks.count))
+            return
+        }
+
         rootStack.addArrangedSubview(headerRow(openCount: openTasks.count, overdueCount: overdueTasks.count))
         rootStack.addArrangedSubview(projectProgressView(tasks: tasks, projectName: "AI试穿"))
         rootStack.addArrangedSubview(projectProgressView(tasks: tasks, projectName: "AI穿搭"))
         rootStack.addArrangedSubview(taskListView(sortedOpenTasks))
         rootStack.addArrangedSubview(footerView(tasksCount: tasks.count, hiddenCount: preferences.hiddenTaskIds.count))
+    }
+
+    private func compactWidget(openCount: Int, overdueCount: Int) -> NSView {
+        let button = NSButton(title: "", target: self, action: #selector(expandWidget))
+        button.isBordered = false
+        button.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 4
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let orb = label("Ai", size: 16, weight: .bold, color: .white)
+        orb.alignment = .center
+        orb.wantsLayer = true
+        orb.layer?.backgroundColor = NSColor(calibratedRed: 0.14, green: 0.36, blue: 0.32, alpha: 1).cgColor
+        orb.layer?.cornerRadius = 20
+        orb.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        orb.heightAnchor.constraint(equalToConstant: 40).isActive = true
+
+        let summaryText = overdueCount > 0 ? "\(overdueCount) 逾期" : "\(openCount) 待办"
+        stack.addArrangedSubview(orb)
+        stack.addArrangedSubview(label(summaryText, size: 11, weight: .semibold))
+        button.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: 88),
+            button.heightAnchor.constraint(equalToConstant: 76),
+            stack.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+        ])
+
+        return button
     }
 
     private func sortOpenTasks(_ tasks: [AimeTask]) -> [AimeTask] {
@@ -143,11 +183,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let titleStack = NSStackView()
         titleStack.orientation = .vertical
         titleStack.spacing = 2
-        titleStack.addArrangedSubview(label("Aime 桌面端", size: 12, weight: .medium, color: mutedColor()))
+        titleStack.addArrangedSubview(label("任务伴随", size: 12, weight: .medium, color: mutedColor()))
         titleStack.addArrangedSubview(summary)
+
+        let collapse = NSButton(title: "收起", target: self, action: #selector(collapseWidget))
+        collapse.bezelStyle = .rounded
+        collapse.controlSize = .small
 
         row.addArrangedSubview(orb)
         row.addArrangedSubview(titleStack)
+        row.addArrangedSubview(collapse)
         return row
     }
 
@@ -343,18 +388,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func createStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "Aime"
+        statusItem.button?.title = "Ai"
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Show Widget", action: #selector(showWidget), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Refresh", action: #selector(refreshClicked), keyEquivalent: "r"))
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "显示任务伴随", action: #selector(showWidget), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "展开任务列表", action: #selector(expandWidget), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "刷新", action: #selector(refreshClicked), keyEquivalent: "r"))
+        menu.addItem(NSMenuItem(title: "退出", action: #selector(quit), keyEquivalent: "q"))
         statusItem.menu = menu
     }
 
     @objc private func showWidget() {
-        window.setFrame(initialWidgetFrame(), display: true, animate: true)
+        window.setFrame(frameForCurrentMode(), display: true, animate: true)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func expandWidget() {
+        isExpanded = true
+        window.setFrame(frameForCurrentMode(), display: true, animate: true)
+        reloadTasks()
+        showWidget()
+    }
+
+    @objc private func collapseWidget() {
+        isExpanded = false
+        window.setFrame(frameForCurrentMode(), display: true, animate: true)
+        reloadTasks()
+        showWidget()
     }
 
     @objc private func refreshClicked() {
@@ -485,15 +545,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func chooseDueDate() -> String? {
         let picker = NSDatePicker()
-        picker.datePickerStyle = .clockAndCalendar
+        picker.datePickerStyle = .textFieldAndStepper
         picker.datePickerElements = [.yearMonthDay, .hourMinute]
         picker.dateValue = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         picker.translatesAutoresizingMaskIntoConstraints = false
-        picker.widthAnchor.constraint(equalToConstant: 320).isActive = true
+        picker.widthAnchor.constraint(equalToConstant: 240).isActive = true
 
         let alert = NSAlert()
         alert.messageText = "选择新的截止时间"
-        alert.informativeText = "会写回飞书 Base 的“截止时间”字段。"
+        alert.informativeText = "会写回飞书 Base 的截止时间字段。"
         alert.accessoryView = picker
         alert.addButton(withTitle: "保存")
         alert.addButton(withTitle: "取消")
@@ -506,8 +566,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return formatter.string(from: picker.dateValue)
     }
 
-    private func initialWidgetFrame() -> NSRect {
-        let size = NSSize(width: 460, height: 650)
+    private func frameForCurrentMode() -> NSRect {
+        let size = isExpanded ? NSSize(width: 460, height: 650) : NSSize(width: 120, height: 104)
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         return NSRect(
             x: visibleFrame.maxX - size.width - 32,
