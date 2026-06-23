@@ -177,7 +177,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
-        if let statusView = styleStatusView(openCount: actionableTasks.count, overdueCount: overdueTasks.count) {
+        if preferences.displayStyle == "cute" {
+            rootStack.addArrangedSubview(dogDenSummary(tasks: tasks))
+        } else if let statusView = styleStatusView(openCount: actionableTasks.count, overdueCount: overdueTasks.count) {
             rootStack.addArrangedSubview(statusView)
         }
         rootStack.addArrangedSubview(filterView(tasks: tasks))
@@ -221,7 +223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         stack.spacing = 4
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let orb = label(avatarText(), size: 16, weight: .bold, color: avatarTextColor())
+        let orbText = preferences.displayStyle == "cute" ? dogFace() : avatarText()
+        let orb = label(orbText, size: 16, weight: .bold, color: avatarTextColor())
         orb.alignment = .center
         orb.wantsLayer = true
         orb.layer?.backgroundColor = avatarColor().cgColor
@@ -246,9 +249,139 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func compactSummaryText(openCount: Int, overdueCount: Int) -> String {
         if preferences.displayStyle == "cute" {
-            return overdueCount > 0 ? "催你啦 \(overdueCount)" : "陪你做 \(openCount)"
+            if petState.p0Count > 0 {
+                return "有 \(petState.p0Count) 个 P0 任务"
+            }
+            if petState.overdueCount > 0 {
+                return "有 \(petState.overdueCount) 件逾期"
+            }
+            return "\(petState.pendingKibbleCount) 粒狗粮"
         }
         return overdueCount > 0 ? "\(overdueCount) 逾期" : "\(openCount) 待办"
+    }
+
+    private func dogDenSummary(tasks: [AimeTask]) -> NSView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+
+        let nextTaskRow = NSStackView()
+        nextTaskRow.orientation = .vertical
+        nextTaskRow.alignment = .leading
+        nextTaskRow.spacing = 3
+        nextTaskRow.addArrangedSubview(label("下一件最重要的事", size: 11, weight: .medium, color: mutedColor()))
+        nextTaskRow.addArrangedSubview(label(nextTaskTitle(from: tasks), size: 14, weight: .semibold))
+
+        let metrics = NSStackView()
+        metrics.orientation = .vertical
+        metrics.alignment = .leading
+        metrics.spacing = 6
+        metrics.addArrangedSubview(metricRow([("P0", "\(petState.p0Count)"), ("逾期", "\(petState.overdueCount)")]))
+        metrics.addArrangedSubview(metricRow([("狗粮", "\(petState.pendingKibbleCount)"), ("遛狗", "\(petState.fedTodayCount)")]))
+
+        stack.addArrangedSubview(nextTaskRow)
+        stack.addArrangedSubview(metrics)
+        stack.addArrangedSubview(label(dogStateLine(), size: 11, weight: .medium, color: mutedColor()))
+
+        return card(stack, width: contentWidth())
+    }
+
+    private func metricRow(_ items: [(String, String)]) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 6
+        items.forEach { title, value in
+            row.addArrangedSubview(metricPill(title: title, value: value))
+        }
+        return row
+    }
+
+    private func metricPill(title: String, value: String) -> NSView {
+        let width = max(80, (contentWidth() - 20 - 6) / 2)
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.backgroundColor = styleStatusBackgroundColor().cgColor
+        container.layer?.cornerRadius = preferences.displayStyle == "cute" ? 12 : 7
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.widthAnchor.constraint(equalToConstant: width).isActive = true
+
+        let titleLabel = label(title, size: 10, weight: .medium, color: mutedColor())
+        let valueLabel = label(value, size: 14, weight: .bold, color: NSColor.labelColor)
+        titleLabel.maximumNumberOfLines = 1
+        valueLabel.maximumNumberOfLines = 1
+        titleLabel.lineBreakMode = .byTruncatingTail
+        valueLabel.lineBreakMode = .byTruncatingTail
+
+        let textStack = NSStackView()
+        textStack.orientation = .vertical
+        textStack.alignment = .centerX
+        textStack.spacing = 1
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+        textStack.addArrangedSubview(titleLabel)
+        textStack.addArrangedSubview(valueLabel)
+        container.addSubview(textStack)
+
+        NSLayoutConstraint.activate([
+            textStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
+            textStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6),
+            textStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 5),
+            textStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -5),
+        ])
+        return container
+    }
+
+    private func dogFace() -> String {
+        switch petState.dogMood {
+        case .concerned:
+            return "🐶!"
+        case .walking:
+            return "🐕"
+        case .happyReturn:
+            return "🐶✓"
+        case .sniffing:
+            return "🐶?"
+        default:
+            return "🐶"
+        }
+    }
+
+    private func dogStateLine() -> String {
+        switch petState.dogMood {
+        case .walking:
+            return "完成得好，带小狗出门散步中"
+        case .happyReturn:
+            return "散步回来啦，今天已投喂 \(petState.fedTodayCount) 次"
+        case .concerned:
+            if petState.p0Count > 0 {
+                return "小狗叼着牵引绳：还有 \(petState.p0Count) 件 P0 在等你"
+            }
+            if petState.overdueCount > 0 {
+                return "小狗坐在门口：有 \(petState.overdueCount) 件事过期了"
+            }
+            return "小狗坐在门口，提醒你先看风险任务"
+        case .foundTask, .readyToWalk:
+            return "\(petState.pendingKibbleCount) 粒狗粮在碗边，完成后再喂"
+        case .sniffing:
+            return "小狗正在嗅闻新线索"
+        case .idle:
+            if petState.fedTodayCount > 0 {
+                return "今天已遛狗 \(petState.fedTodayCount) 次"
+            }
+            return "今天从一件小事开始"
+        }
+    }
+
+    private func nextTaskTitle(from tasks: [AimeTask]) -> String {
+        guard
+            let nextTaskId = petState.nextTaskId,
+            let nextTask = tasks.first(where: { $0.id == nextTaskId })
+        else {
+            return "当前没有紧急待办"
+        }
+        let priority = preferences.priorityByTaskId[nextTask.id] ?? "P2"
+        return "\(priority) · \(nextTask.title)"
     }
 
     private func styleStatusView(openCount: Int, overdueCount: Int) -> NSView? {
@@ -661,7 +794,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func styleTitle() -> String {
         switch preferences.displayStyle {
         case "minimal": return "Aime"
-        case "cute": return "Aime 陪伴"
+        case "cute": return "Aime 小狗"
         default: return "任务伴随"
         }
     }
@@ -854,13 +987,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func notifyIfTaskStateChanged(previousTaskCount: Int, previousOverdueCount: Int) {
         if lastKnownTaskCount > previousTaskCount {
+            let deltaTasks = lastKnownTaskCount - previousTaskCount
             showStatusNotification(
-                title: preferences.displayStyle == "cute" ? "Aime 捡到新待办啦" : "Aime 有新待办",
-                body: "新增 \(lastKnownTaskCount - previousTaskCount) 个待办，点开看看。"
+                title: preferences.displayStyle == "cute" ? "小狗闻到新待办" : "Aime 有新待办",
+                body: preferences.displayStyle == "cute"
+                    ? "有 \(deltaTasks) 个新待办，狗粮先放在碗边。"
+                    : "新增 \(deltaTasks) 个待办，点开看看。"
             )
         } else if lastKnownOverdueCount > previousOverdueCount {
             showStatusNotification(
-                title: preferences.displayStyle == "cute" ? "有任务在轻轻催你" : "有任务已逾期",
+                title: preferences.displayStyle == "cute" ? "小狗叼着牵引绳" : "有任务已逾期",
                 body: "现在有 \(lastKnownOverdueCount) 个逾期待办。"
             )
         }
