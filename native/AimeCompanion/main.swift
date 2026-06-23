@@ -24,6 +24,9 @@ final class AimeActionButton: NSButton {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let defaultBaseURL = "https://bytedance.larkoffice.com/base/F4k1bKUkRaIafPsKxP2cVAyEnwJ?table=tblllGcOFXODLI5I&view=vewBgeF8ZA"
+    private let defaultAimeAssistantURL = "lark://client"
+
     private var window: NSWindow!
     private var statusItem: NSStatusItem!
     private var rootStack: NSStackView!
@@ -316,6 +319,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         row.alignment = .centerY
         row.spacing = 8
 
+        let base = NSButton(title: "多维表格", target: self, action: #selector(openAimeBase))
+        base.bezelStyle = .rounded
+        base.controlSize = .small
+
+        let assistant = NSButton(title: "Aime助手", target: self, action: #selector(openAimeAssistant))
+        assistant.bezelStyle = .rounded
+        assistant.controlSize = .small
+
         let refresh = NSButton(title: "刷新", target: self, action: #selector(refreshClicked))
         refresh.bezelStyle = .rounded
         refresh.controlSize = .small
@@ -327,6 +338,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         row.addArrangedSubview(label("\(tasksCount) tasks from Aime Base", size: 11, color: mutedColor()))
         row.addArrangedSubview(label("\(hiddenCount) hidden", size: 11, color: mutedColor()))
+        row.addArrangedSubview(base)
+        row.addArrangedSubview(assistant)
         row.addArrangedSubview(hiddenToggle)
         row.addArrangedSubview(refresh)
         return row
@@ -392,6 +405,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "显示任务伴随", action: #selector(showWidget), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "展开任务列表", action: #selector(expandWidget), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "打开多维表格", action: #selector(openAimeBase), keyEquivalent: "b"))
+        menu.addItem(NSMenuItem(title: "打开 Aime 助手", action: #selector(openAimeAssistant), keyEquivalent: "a"))
         menu.addItem(NSMenuItem(title: "刷新", action: #selector(refreshClicked), keyEquivalent: "r"))
         menu.addItem(NSMenuItem(title: "退出", action: #selector(quit), keyEquivalent: "q"))
         statusItem.menu = menu
@@ -423,6 +438,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showWidget()
     }
 
+    @objc private func openAimeBase() {
+        openURLString(ProcessInfo.processInfo.environment["AIME_BASE_URL"] ?? defaultBaseURL)
+    }
+
+    @objc private func openAimeAssistant() {
+        openURLString(ProcessInfo.processInfo.environment["AIME_ASSISTANT_URL"] ?? defaultAimeAssistantURL)
+    }
+
     @objc private func openTaskSource(_ sender: NSButton) {
         guard
             let urlString = (sender as? AimeActionButton)?.payload,
@@ -430,6 +453,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         else {
             return
         }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func openURLString(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
         NSWorkspace.shared.open(url)
     }
 

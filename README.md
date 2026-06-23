@@ -39,9 +39,16 @@ npm test
 - Shows a small always-on-top floating badge using a native Swift/AppKit shell.
 - Clicking the badge expands a scrollable task list, sorted by pinned state and due date.
 - Each task supports opening the source link, choosing an exact due date/time, pinning, hiding, and marking complete.
+- The expanded panel and menu bar include shortcuts for the Aime Base and the Aime assistant conversation.
 - Completion status and due date/time are written back to Lark Base.
 - Pinning, hidden state, and the "show hidden" desktop view are stored locally on this Mac.
 - Long-term project progress is shown as native progress bars, currently calculated from completed tasks per project.
+
+The Aime Base shortcut defaults to the current Base URL. The assistant shortcut defaults to opening Lark; set `AIME_ASSISTANT_URL` before launch if you have a direct conversation link:
+
+```bash
+AIME_ASSISTANT_URL="lark://..." npm run native:run
+```
 
 ## Lark/Aime Connection Status
 
