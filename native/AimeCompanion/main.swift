@@ -22,6 +22,8 @@ struct LocalPreferences: Codable {
     var priorityFilter: String = "all"
     var projectFilter: String = "all"
     var statusFilter: String = "open"
+    var expandedPanelWidth: Double = 400
+    var expandedPanelHeight: Double = 560
 }
 
 final class AimeActionButton: NSButton {
@@ -32,7 +34,7 @@ final class AimeMenuItem: NSMenuItem {
     var payload: String = ""
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let defaultBaseURL = "https://bytedance.larkoffice.com/base/F4k1bKUkRaIafPsKxP2cVAyEnwJ?table=tblllGcOFXODLI5I&view=vewBgeF8ZA"
     private let defaultAimeAssistantURL = "https://applink.feishu.cn/client/chat/open?openChatId=oc_31661171e477fd90c1d62de8e2f1a84d"
 
@@ -43,15 +45,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var preferences = LocalPreferences()
     private var showingHiddenTasks = false
     private var isExpanded = false
+    private var autoRefreshTimer: Timer?
+    private var screenMonitorTimer: Timer?
+    private var lastRecognizedScreenText = ""
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         taskFeedPath = resolveTaskFeedPath()
+        preferences = loadPreferences()
 
         let frame = frameForCurrentMode()
         window = NSWindow(
             contentRect: frame,
-            styleMask: [.borderless],
+            styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -61,13 +67,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         window.isMovableByWindowBackground = true
+        window.delegate = self
         window.title = "Aime Task Companion"
         window.contentView = buildContentView(frame: frame)
 
+        updateWindowResizeBounds()
         reloadTasks()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         createStatusItem()
+        startAutoRefresh()
     }
 
     private func buildContentView(frame: NSRect) -> NSView {
@@ -237,11 +246,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         more.addItem(withTitle: "更多")
         addMenuItem("新增待办", to: more, action: #selector(addTaskClicked))
         addMenuItem("识别屏幕", to: more, action: #selector(captureScreenClicked))
+        addMenuItem(screenMonitorTimer == nil ? "开始实时识别" : "停止实时识别", to: more, action: #selector(toggleScreenMonitor))
         more.menu?.addItem(NSMenuItem.separator())
         addMenuItem("打开多维表格", to: more, action: #selector(openAimeBase))
         addMenuItem("打开 Aime 助手", to: more, action: #selector(openAimeAssistant))
         more.menu?.addItem(NSMenuItem.separator())
         addMenuItem(showingHiddenTasks ? "收起隐藏任务" : "显示隐藏任务", to: more, action: #selector(toggleShowHiddenTasks))
+        addMenuItem("重置面板尺寸", to: more, action: #selector(resetExpandedPanelSize))
         addMenuItem("刷新", to: more, action: #selector(refreshClicked))
 
         row.addArrangedSubview(orb)
@@ -312,7 +323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stack.addArrangedSubview(label("待办", size: 12, weight: .medium, color: mutedColor()))
 
         if tasks.isEmpty {
-            stack.addArrangedSubview(card(label("当前筛选下没有任务", size: 14, weight: .semibold), width: 338))
+            stack.addArrangedSubview(card(label("当前筛选下没有任务", size: 14, weight: .semibold), width: contentWidth()))
         } else {
             stack.addArrangedSubview(scrollableTaskList(tasks))
         }
@@ -340,9 +351,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         scrollView.documentView = documentStack
         NSLayoutConstraint.activate([
-            scrollView.widthAnchor.constraint(equalToConstant: 352),
-            scrollView.heightAnchor.constraint(equalToConstant: 360),
-            documentStack.widthAnchor.constraint(equalToConstant: 338),
+            scrollView.widthAnchor.constraint(equalToConstant: scrollWidth()),
+            scrollView.heightAnchor.constraint(equalToConstant: scrollHeight()),
+            documentStack.widthAnchor.constraint(equalToConstant: contentWidth()),
         ])
 
         return scrollView
@@ -366,7 +377,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stack.addArrangedSubview(label(title, size: 13, weight: isPinned ? .bold : .semibold, color: titleColor(priority: priority, isPinned: isPinned)))
         stack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 11, color: mutedColor()))
         stack.addArrangedSubview(actionRow(for: task))
-        return card(stack, width: 338, priority: priority, isPinned: isPinned)
+        return card(stack, width: contentWidth(), priority: priority, isPinned: isPinned)
+    }
+
+    private func contentWidth() -> CGFloat {
+        guard isExpanded else { return 88 }
+        return max(318, window.frame.width - 62)
+    }
+
+    private func scrollWidth() -> CGFloat {
+        contentWidth() + 14
+    }
+
+    private func scrollHeight() -> CGFloat {
+        guard isExpanded else { return 0 }
+        return max(245, window.frame.height - 200)
     }
 
     private func actionRow(for task: AimeTask) -> NSView {
@@ -540,16 +565,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func expandWidget() {
         isExpanded = true
+        updateWindowResizeBounds()
         window.setFrame(frameForCurrentMode(), display: true, animate: true)
         reloadTasks()
         showWidget()
     }
 
     @objc private func collapseWidget() {
+        saveExpandedPanelSize()
         isExpanded = false
+        updateWindowResizeBounds()
         window.setFrame(frameForCurrentMode(), display: true, animate: true)
         reloadTasks()
         showWidget()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        guard isExpanded else { return }
+        saveExpandedPanelSize()
+        reloadTasks()
+    }
+
+    private func saveExpandedPanelSize() {
+        guard isExpanded else { return }
+        preferences.expandedPanelWidth = Double(window.frame.width)
+        preferences.expandedPanelHeight = Double(window.frame.height)
+        savePreferences()
+    }
+
+    private func updateWindowResizeBounds() {
+        if isExpanded {
+            window.minSize = NSSize(width: 380, height: 440)
+            window.maxSize = NSSize(width: 760, height: 900)
+        } else {
+            window.minSize = NSSize(width: 120, height: 104)
+            window.maxSize = NSSize(width: 120, height: 104)
+        }
     }
 
     @objc private func refreshClicked() {
@@ -558,12 +609,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showWidget()
     }
 
+    private func startAutoRefresh() {
+        autoRefreshTimer?.invalidate()
+        autoRefreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            self?.performAutoRefresh()
+        }
+    }
+
+    private func performAutoRefresh() {
+        pullLatestTasks()
+        reloadTasks()
+    }
+
     @objc private func addTaskClicked() {
         guard let draft = taskDraftDialog(title: "新增待办", initialText: "") else { return }
         createTask(title: draft.title, dueDate: draft.dueDate, project: draft.project)
     }
 
     @objc private func captureScreenClicked() {
+        scanScreenForTasks(dialogTitle: "从屏幕识别待办", skipDuplicate: false)
+    }
+
+    @objc private func toggleScreenMonitor() {
+        if screenMonitorTimer == nil {
+            lastRecognizedScreenText = ""
+            screenMonitorTimer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { [weak self] _ in
+                self?.scanScreenForTasks(dialogTitle: "实时识别到可能待办", skipDuplicate: true)
+            }
+            scanScreenForTasks(dialogTitle: "实时识别到可能待办", skipDuplicate: true)
+        } else {
+            screenMonitorTimer?.invalidate()
+            screenMonitorTimer = nil
+        }
+        reloadTasks()
+    }
+
+    @objc private func resetExpandedPanelSize() {
+        preferences.expandedPanelWidth = 400
+        preferences.expandedPanelHeight = 560
+        savePreferences()
+        guard isExpanded else { return }
+        window.setFrame(frameForCurrentMode(), display: true, animate: true)
+        reloadTasks()
+    }
+
+    private func scanScreenForTasks(dialogTitle: String, skipDuplicate: Bool) {
         let screenshotURL = captureCurrentScreen()
         guard let screenshotURL else {
             showMessage("无法截取屏幕", detail: "请确认系统已允许屏幕录制权限。")
@@ -571,7 +661,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let recognizedText = recognizeText(in: screenshotURL)
-        guard let draft = taskDraftDialog(title: "从屏幕识别待办", initialText: recognizedText) else { return }
+        let compactText = compactTaskTitle(recognizedText)
+        guard !compactText.isEmpty else { return }
+        if skipDuplicate {
+            guard compactText != lastRecognizedScreenText else { return }
+        }
+        lastRecognizedScreenText = compactText
+
+        guard let draft = taskDraftDialog(title: dialogTitle, initialText: recognizedText) else { return }
         createTask(title: draft.title, dueDate: draft.dueDate, project: draft.project)
     }
 
@@ -703,6 +800,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quit() {
+        autoRefreshTimer?.invalidate()
+        screenMonitorTimer?.invalidate()
         NSApp.terminate(nil)
     }
 
@@ -1011,7 +1110,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func frameForCurrentMode() -> NSRect {
-        let size = isExpanded ? NSSize(width: 400, height: 560) : NSSize(width: 120, height: 104)
+        let expandedWidth = min(max(preferences.expandedPanelWidth, 380), 760)
+        let expandedHeight = min(max(preferences.expandedPanelHeight, 440), 900)
+        let size = isExpanded ? NSSize(width: expandedWidth, height: expandedHeight) : NSSize(width: 120, height: 104)
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         return NSRect(
             x: visibleFrame.maxX - size.width - 32,

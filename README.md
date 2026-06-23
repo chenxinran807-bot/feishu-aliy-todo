@@ -37,10 +37,11 @@ npm test
 ## MVP Behavior
 
 - Shows a small always-on-top floating badge using a native Swift/AppKit shell.
-- Clicking the badge expands a compact task list, sorted by pinned state, priority, and due date.
+- Clicking the badge expands a compact, resizable task list, sorted by pinned state, priority, and due date.
 - The expanded panel keeps only common actions visible: complete, reschedule, filter, and task-level "more".
 - Less frequent actions live behind "更多": opening sources, pinning, hiding, ignoring, P0/P1/P2 priority, creating tasks, screen recognition, and Aime/Base shortcuts.
 - The "识别屏幕" action captures the current screen, runs local macOS OCR, and lets you confirm/edit a new task before writing to Base.
+- "开始实时识别" runs local OCR every 45 seconds after the user explicitly enables it, and still asks for confirmation before creating a task.
 - Completion status and due date/time are written back to Lark Base.
 - Pinning, hidden state, P0/P1/P2 priority, and filter preferences are stored locally on this Mac.
 - Long-term project progress logic is retained but no longer shown in the default compact panel.
@@ -68,6 +69,7 @@ https://bytedance.larkoffice.com/base/F4k1bKUkRaIafPsKxP2cVAyEnwJ?table=tblllGcO
 The current MVP can pull records from the existing Aime Base through `lark-cli`. The sync boundary is:
 
 - Pull task records from the Base table.
+- Auto-refresh pulled task records every 5 minutes while the widget is running.
 - Write completion status and due date back to Base.
 - Keep reminders, hidden state, pinning, and progress overrides local.
 
