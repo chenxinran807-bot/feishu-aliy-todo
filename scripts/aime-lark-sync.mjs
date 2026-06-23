@@ -237,16 +237,18 @@ function asSourceType(value) {
 }
 
 function asDateKey(value) {
+  const dateTimePattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+  if (typeof value === "string" && dateTimePattern.test(value)) return value;
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   if (typeof value === "number") return new Date(value).toISOString().slice(0, 10);
   const text = asText(value);
-  const match = text.match(/\d{4}-\d{2}-\d{2}/);
+  const match = text.match(/\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?/);
   return match?.[0];
 }
 
 function assertDateKey(value) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    console.error("--due-date must use YYYY-MM-DD format.");
+  if (!/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/.test(value)) {
+    console.error("--due-date must use YYYY-MM-DD or YYYY-MM-DD HH:mm:ss format.");
     process.exit(1);
   }
 }
@@ -293,6 +295,6 @@ function printUsageAndExit() {
   npm run lark:fields -- [--config config/aime-base.example.json]
   npm run lark:pull -- [--config config/aime-base.example.json] [--out tmp/aime-tasks.json]
   npm run lark:complete -- --record-id rec_xxx
-  npm run lark:reschedule -- --record-id rec_xxx --due-date YYYY-MM-DD`);
+  npm run lark:reschedule -- --record-id rec_xxx --due-date "YYYY-MM-DD HH:mm:ss"`);
   process.exit(1);
 }

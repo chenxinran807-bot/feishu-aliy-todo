@@ -14,6 +14,11 @@ struct AimeTask: Decodable {
     let sourceUrl: String?
 }
 
+struct LocalPreferences: Codable {
+    var pinnedTaskIds: Set<String> = []
+    var hiddenTaskIds: Set<String> = []
+}
+
 final class AimeActionButton: NSButton {
     var payload: String = ""
 }
@@ -23,6 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var rootStack: NSStackView!
     private var taskFeedPath: String = ""
+    private var preferences = LocalPreferences()
+    private var showingHiddenTasks = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -85,18 +92,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let openTasks = tasks.filter { $0.status != "done" }
+        let visibleOpenTasks = openTasks.filter { task in
+            showingHiddenTasks || !preferences.hiddenTaskIds.contains(task.id)
+        }
         let overdueTasks = openTasks.filter { task in
             guard let dueDate = task.dueDate else { return false }
             return dueDate < todayKey()
         }
-        let todayTasks = openTasks.filter { $0.dueDate == todayKey() }
-        let nextTask = overdueTasks.first ?? todayTasks.first ?? openTasks.first
+        let sortedOpenTasks = sortOpenTasks(visibleOpenTasks)
 
         rootStack.addArrangedSubview(headerRow(openCount: openTasks.count, overdueCount: overdueTasks.count))
-        rootStack.addArrangedSubview(nextTaskView(nextTask))
         rootStack.addArrangedSubview(projectProgressView(tasks: tasks, projectName: "AI试穿"))
         rootStack.addArrangedSubview(projectProgressView(tasks: tasks, projectName: "AI穿搭"))
-        rootStack.addArrangedSubview(footerView(tasksCount: tasks.count))
+        rootStack.addArrangedSubview(taskListView(sortedOpenTasks))
+        rootStack.addArrangedSubview(footerView(tasksCount: tasks.count, hiddenCount: preferences.hiddenTaskIds.count))
+    }
+
+    private func sortOpenTasks(_ tasks: [AimeTask]) -> [AimeTask] {
+        tasks.sorted { left, right in
+            let leftPinned = preferences.pinnedTaskIds.contains(left.id)
+            let rightPinned = preferences.pinnedTaskIds.contains(right.id)
+            if leftPinned != rightPinned {
+                return leftPinned
+            }
+
+            let leftDate = left.dueDate ?? "9999-12-31"
+            let rightDate = right.dueDate ?? "9999-12-31"
+            if leftDate == rightDate {
+                return left.title < right.title
+            }
+            return leftDate < rightDate
+        }
     }
 
     private func headerRow(openCount: Int, overdueCount: Int) -> NSView {
@@ -125,21 +151,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return row
     }
 
-    private func nextTaskView(_ task: AimeTask?) -> NSView {
+    private func taskListView(_ tasks: [AimeTask]) -> NSView {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 4
-        stack.addArrangedSubview(label("下一件事", size: 12, weight: .medium, color: mutedColor()))
+        stack.spacing = 8
+        stack.addArrangedSubview(label("全部待办（上下滚动）", size: 12, weight: .medium, color: mutedColor()))
 
-        if let task {
-            stack.addArrangedSubview(label(task.title, size: 14, weight: .semibold))
-            stack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 12, color: mutedColor()))
-            stack.addArrangedSubview(actionRow(for: task))
+        if tasks.isEmpty {
+            stack.addArrangedSubview(card(label("目前没有未完成任务", size: 14, weight: .semibold), width: 388))
         } else {
-            stack.addArrangedSubview(label("目前没有未完成任务", size: 14, weight: .semibold))
+            stack.addArrangedSubview(scrollableTaskList(tasks))
         }
-        return card(stack)
+        return stack
+    }
+
+    private func scrollableTaskList(_ tasks: [AimeTask]) -> NSView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+
+        let documentStack = NSStackView()
+        documentStack.orientation = .vertical
+        documentStack.alignment = .leading
+        documentStack.spacing = 8
+        documentStack.translatesAutoresizingMaskIntoConstraints = false
+
+        tasks.forEach { task in
+            documentStack.addArrangedSubview(taskCardView(task))
+        }
+
+        scrollView.documentView = documentStack
+        NSLayoutConstraint.activate([
+            scrollView.widthAnchor.constraint(equalToConstant: 402),
+            scrollView.heightAnchor.constraint(equalToConstant: 330),
+            documentStack.widthAnchor.constraint(equalToConstant: 388),
+        ])
+
+        return scrollView
+    }
+
+    private func taskCardView(_ task: AimeTask) -> NSView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 5
+        let isPinned = preferences.pinnedTaskIds.contains(task.id)
+        let isHidden = preferences.hiddenTaskIds.contains(task.id)
+        let statePrefix = [
+            isPinned ? "置顶" : nil,
+            isHidden ? "隐藏" : nil,
+        ].compactMap { $0 }.joined(separator: " · ")
+        let title = statePrefix.isEmpty ? task.title : "\(statePrefix) · \(task.title)"
+
+        stack.addArrangedSubview(label(title, size: 13, weight: .semibold))
+        stack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 11, color: mutedColor()))
+        stack.addArrangedSubview(actionRow(for: task))
+        return card(stack, width: 388)
     }
 
     private func actionRow(for task: AimeTask) -> NSView {
@@ -151,7 +223,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let sourceUrl = task.sourceUrl, !sourceUrl.isEmpty {
             row.addArrangedSubview(actionButton("打开", representedObject: sourceUrl, action: #selector(openTaskSource(_:))))
         }
-        row.addArrangedSubview(actionButton("明天", representedObject: task.id, action: #selector(moveTaskToTomorrow(_:))))
+        row.addArrangedSubview(actionButton("改时间", representedObject: task.id, action: #selector(rescheduleTask(_:))))
+        row.addArrangedSubview(actionButton(preferences.pinnedTaskIds.contains(task.id) ? "取消置顶" : "置顶", representedObject: task.id, action: #selector(togglePinTask(_:))))
+        row.addArrangedSubview(actionButton(preferences.hiddenTaskIds.contains(task.id) ? "取消隐藏" : "隐藏", representedObject: task.id, action: #selector(toggleHideTask(_:))))
         row.addArrangedSubview(actionButton("完成", representedObject: task.id, action: #selector(completeTask(_:))))
         return row
     }
@@ -183,7 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         progress.doubleValue = percent
         progress.controlSize = .small
         progress.translatesAutoresizingMaskIntoConstraints = false
-        progress.widthAnchor.constraint(equalToConstant: 320).isActive = true
+        progress.widthAnchor.constraint(equalToConstant: 388).isActive = true
 
         stack.addArrangedSubview(title)
         stack.addArrangedSubview(progress)
@@ -191,7 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return stack
     }
 
-    private func footerView(tasksCount: Int) -> NSView {
+    private func footerView(tasksCount: Int, hiddenCount: Int) -> NSView {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
@@ -201,12 +275,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refresh.bezelStyle = .rounded
         refresh.controlSize = .small
 
+        let hiddenToggle = NSButton(title: showingHiddenTasks ? "隐藏收起" : "显示隐藏", target: self, action: #selector(toggleShowHiddenTasks))
+        hiddenToggle.bezelStyle = .rounded
+        hiddenToggle.controlSize = .small
+        hiddenToggle.isEnabled = hiddenCount > 0
+
         row.addArrangedSubview(label("\(tasksCount) tasks from Aime Base", size: 11, color: mutedColor()))
+        row.addArrangedSubview(label("\(hiddenCount) hidden", size: 11, color: mutedColor()))
+        row.addArrangedSubview(hiddenToggle)
         row.addArrangedSubview(refresh)
         return row
     }
 
-    private func card(_ content: NSView) -> NSView {
+    private func card(_ content: NSView, width: CGFloat = 388) -> NSView {
         let wrapper = NSView()
         wrapper.wantsLayer = true
         wrapper.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.72).cgColor
@@ -215,7 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         wrapper.addSubview(content)
 
         NSLayoutConstraint.activate([
-            wrapper.widthAnchor.constraint(equalToConstant: 340),
+            wrapper.widthAnchor.constraint(equalToConstant: width),
             content.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: 10),
             content.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor, constant: -10),
             content.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: 8),
@@ -239,6 +320,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func loadTasks() -> [AimeTask] {
+        preferences = loadPreferences()
+
         do {
             let data = try Data(contentsOf: URL(fileURLWithPath: taskFeedPath))
             let feed = try JSONDecoder().decode(TaskFeed.self, from: data)
@@ -290,6 +373,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(url)
     }
 
+    @objc private func togglePinTask(_ sender: NSButton) {
+        guard let recordId = (sender as? AimeActionButton)?.payload else { return }
+        if preferences.pinnedTaskIds.contains(recordId) {
+            preferences.pinnedTaskIds.remove(recordId)
+        } else {
+            preferences.pinnedTaskIds.insert(recordId)
+        }
+        savePreferences()
+        reloadTasks()
+    }
+
+    @objc private func toggleHideTask(_ sender: NSButton) {
+        guard let recordId = (sender as? AimeActionButton)?.payload else { return }
+        if preferences.hiddenTaskIds.contains(recordId) {
+            preferences.hiddenTaskIds.remove(recordId)
+        } else {
+            preferences.hiddenTaskIds.insert(recordId)
+        }
+        savePreferences()
+        reloadTasks()
+    }
+
+    @objc private func toggleShowHiddenTasks() {
+        showingHiddenTasks.toggle()
+        reloadTasks()
+    }
+
     @objc private func completeTask(_ sender: NSButton) {
         guard let recordId = (sender as? AimeActionButton)?.payload else { return }
         runSyncCommand(["complete", "--record-id", recordId])
@@ -297,9 +407,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reloadTasks()
     }
 
-    @objc private func moveTaskToTomorrow(_ sender: NSButton) {
+    @objc private func rescheduleTask(_ sender: NSButton) {
         guard let recordId = (sender as? AimeActionButton)?.payload else { return }
-        runSyncCommand(["reschedule", "--record-id", recordId, "--due-date", tomorrowKey()])
+        guard let dueDate = chooseDueDate() else { return }
+        runSyncCommand(["reschedule", "--record-id", recordId, "--due-date", dueDate])
         pullLatestTasks()
         reloadTasks()
     }
@@ -340,15 +451,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func tomorrowKey() -> String {
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+    private func preferencesURL() -> URL {
+        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return baseURL
+            .appendingPathComponent("AimeCompanion", isDirectory: true)
+            .appendingPathComponent("local-preferences.json")
+    }
+
+    private func loadPreferences() -> LocalPreferences {
+        let url = preferencesURL()
+        do {
+            let data = try Data(contentsOf: url)
+            return try JSONDecoder().decode(LocalPreferences.self, from: data)
+        } catch {
+            return LocalPreferences()
+        }
+    }
+
+    private func savePreferences() {
+        let url = preferencesURL()
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let data = try JSONEncoder().encode(preferences)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            print("Aime local preferences could not be saved: \(error.localizedDescription)")
+        }
+    }
+
+    private func chooseDueDate() -> String? {
+        let picker = NSDatePicker()
+        picker.datePickerStyle = .clockAndCalendar
+        picker.datePickerElements = [.yearMonthDay, .hourMinute]
+        picker.dateValue = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        picker.translatesAutoresizingMaskIntoConstraints = false
+        picker.widthAnchor.constraint(equalToConstant: 320).isActive = true
+
+        let alert = NSAlert()
+        alert.messageText = "选择新的截止时间"
+        alert.informativeText = "会写回飞书 Base 的“截止时间”字段。"
+        alert.accessoryView = picker
+        alert.addButton(withTitle: "保存")
+        alert.addButton(withTitle: "取消")
+
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return nil }
+
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: tomorrow)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.string(from: picker.dateValue)
     }
 
     private func initialWidgetFrame() -> NSRect {
-        let size = NSSize(width: 420, height: 330)
+        let size = NSSize(width: 460, height: 650)
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         return NSRect(
             x: visibleFrame.maxX - size.width - 32,

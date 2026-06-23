@@ -37,10 +37,11 @@ npm test
 ## MVP Behavior
 
 - Shows an always-on-top floating widget using a native Swift/AppKit shell.
-- Click expands a peek panel with overdue, today, later-this-week tasks.
-- Double-click expands to a management-sized window.
-- Completion, reschedule, and hide actions update local WebView storage.
-- Lark Base sync is represented by a configurable adapter boundary and stays in local sample mode until credentials and field mapping are configured.
+- Shows all open tasks in a scrollable list, sorted by pinned state and due date.
+- Each task supports opening the source link, choosing an exact due date/time, pinning, hiding, and marking complete.
+- Completion status and due date/time are written back to Lark Base.
+- Pinning, hidden state, and the "show hidden" desktop view are stored locally on this Mac.
+- Long-term project progress is shown as native progress bars, currently calculated from completed tasks per project.
 
 ## Lark/Aime Connection Status
 
@@ -50,7 +51,7 @@ The app is designed to connect to the existing Aime Lark Base:
 https://bytedance.larkoffice.com/base/F4k1bKUkRaIafPsKxP2cVAyEnwJ?table=tblllGcOFXODLI5I&view=vewBgeF8ZA
 ```
 
-The current MVP uses local sample data until Lark authorization and field mapping are available. The expected sync boundary is:
+The current MVP can pull records from the existing Aime Base through `lark-cli`. The sync boundary is:
 
 - Pull task records from the Base table.
 - Write completion status and due date back to Base.
@@ -96,10 +97,10 @@ Write completion status back to Base:
 npm run lark:complete -- --record-id rec_xxx
 ```
 
-Write a new due date back to Base:
+Write a new due date/time back to Base:
 
 ```bash
-npm run lark:reschedule -- --record-id rec_xxx --due-date 2026-06-24
+npm run lark:reschedule -- --record-id rec_xxx --due-date "2026-06-24 18:00:00"
 ```
 
 Before live use, update the field names in `config/aime-base.example.json` to match the real Aime Base table. The current environment needs the `base:field:read` scope before `npm run lark:fields` can succeed.
