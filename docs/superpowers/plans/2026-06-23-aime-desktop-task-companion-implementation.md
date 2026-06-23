@@ -10,6 +10,35 @@
 
 ---
 
+## Runtime Pivot Note
+
+During implementation, npm-installed Electron GUI binaries repeatedly crashed on this Mac before app code ran. The failure reproduced with `electron --version`, so the root cause was the local Electron runtime rather than the Aime implementation.
+
+The MVP runtime was switched to a Mac-native Swift/AppKit shell that embeds the Vite-built React UI in `WKWebView`. This preserves the product shape:
+
+- always-visible floating desktop widget
+- click-to-expand peek panel
+- management-sized expanded mode
+- menu bar entry
+- local WebView persistence
+- future Lark Base sync boundary
+
+The current working runtime files are:
+
+- `native/AimeCompanion/main.swift`
+- `src/lib/desktopApi.ts`
+- `src/domain/larkMapping.ts`
+
+Use:
+
+```bash
+npm test
+npm run build
+npm run native:run
+```
+
+The live Lark connection still requires user re-authorization for the `base:field:read` scope before the current Base table fields can be inspected.
+
 ## File Structure
 
 - `package.json`: scripts, dependencies, Electron entry points.
@@ -1696,4 +1725,3 @@ Spec coverage:
 No placeholder scan:
 
 - The plan intentionally leaves live Lark API calls out of this MVP slice because the current field mapping and auth mode are not known. It includes a working config boundary and sample-local mode instead of a vague future implementation.
-
