@@ -84,6 +84,46 @@ struct PetStateTests {
         assertEqual(overdueSnapshot.overdueCount, 1, "overdue count should include past-due actionable tasks")
         assertEqual(overdueSnapshot.dogMood, .concerned, "overdue task should trigger concerned mood")
 
+        let yesterdayReward = PetState(
+            pendingKibbleCount: 1,
+            fedTodayCount: 4,
+            intimacy: 7,
+            dogMood: .idle,
+            lastRewardedTaskIds: [],
+            rewardDate: "2026-06-22",
+            p0Count: 0,
+            overdueCount: 0,
+            nextTaskId: nil
+        )
+        let todayReward = yesterdayReward.rewardIfNeeded(taskId: "new-task", today: "2026-06-23")
+        assertEqual(todayReward.fedTodayCount, 1, "fed count should reset before first reward on a new day")
+        assertEqual(todayReward.intimacy, 8, "intimacy should survive daily reset")
+
+        let persistedWalking = PetState(
+            pendingKibbleCount: 0,
+            fedTodayCount: 1,
+            intimacy: 8,
+            dogMood: .walking,
+            lastRewardedTaskIds: ["new-task"],
+            rewardDate: "2026-06-23",
+            p0Count: 0,
+            overdueCount: 0,
+            nextTaskId: nil
+        )
+        assertEqual(persistedWalking.normalizedAfterLaunch().dogMood, .idle, "launch should recover from transient walking mood")
+        let persistedHappyReturn = PetState(
+            pendingKibbleCount: 0,
+            fedTodayCount: 1,
+            intimacy: 8,
+            dogMood: .happyReturn,
+            lastRewardedTaskIds: ["new-task"],
+            rewardDate: "2026-06-23",
+            p0Count: 0,
+            overdueCount: 0,
+            nextTaskId: nil
+        )
+        assertEqual(persistedHappyReturn.normalizedAfterLaunch().dogMood, .idle, "launch should recover from transient happy-return mood")
+
         print("PetStateTests passed")
     }
 }

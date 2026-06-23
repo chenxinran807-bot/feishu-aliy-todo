@@ -79,6 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var isExpanded = false
     private var autoRefreshTimer: Timer?
     private var screenMonitorTimer: Timer?
+    private var petState = PetState()
+    private var walkReturnTimer: Timer?
     private var lastRecognizedScreenText = ""
     private var lastKnownTaskCount = 0
     private var lastKnownOverdueCount = 0
@@ -87,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.setActivationPolicy(.regular)
         taskFeedPath = resolveTaskFeedPath()
         preferences = loadPreferences()
+        petState = loadPetState()
 
         let frame = frameForCurrentMode()
         window = NSWindow(
@@ -163,6 +166,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return dueDate < todayKey()
         }
         let sortedTasks = sortTasks(visibleTasks)
+        petState = PetState.derive(tasks: tasks, preferences: preferences, previous: petState, today: todayKey())
+        savePetState()
         lastKnownTaskCount = tasks.count
         lastKnownOverdueCount = overdueTasks.count
 
@@ -1025,7 +1030,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func completeTask(_ sender: NSButton) {
         guard let recordId = (sender as? AimeActionButton)?.payload else { return }
-        runSyncCommand(["complete", "--record-id", recordId])
+        if runSyncCommand(["complete", "--record-id", recordId]) {
+            petState = petState.rewardIfNeeded(taskId: recordId, today: todayKey())
+            savePetState()
+            scheduleWalkReturn()
+        } else {
+            showMessage(
+                "写回失败，先别遛狗",
+                detail: "完成状态没有成功写回飞书 Base，请稍后重试。"
+            )
+        }
         pullLatestTasks()
         reloadTasks()
     }
@@ -1056,6 +1070,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func quit() {
         autoRefreshTimer?.invalidate()
         screenMonitorTimer?.invalidate()
+        walkReturnTimer?.invalidate()
         NSApp.terminate(nil)
     }
 
@@ -1085,7 +1100,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         reloadTasks()
     }
 
-    private func runSyncCommand(_ arguments: [String]) {
+    private func scheduleWalkReturn() {
+        walkReturnTimer?.invalidate()
+        walkReturnTimer = Timer.scheduledTimer(withTimeInterval: 2.2, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.petState.dogMood = .happyReturn
+            self.savePetState()
+            self.reloadTasks()
+
+            self.walkReturnTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                self.petState.dogMood = .idle
+                self.savePetState()
+                self.reloadTasks()
+                self.walkReturnTimer = nil
+            }
+        }
+    }
+
+    @discardableResult
+    private func runSyncCommand(_ arguments: [String]) -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -1098,9 +1132,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             process.waitUntilExit()
             if process.terminationStatus != 0 {
                 print("Aime sync command failed: \(arguments.joined(separator: " "))")
+                return false
             }
+            return true
         } catch {
             print("Aime sync command could not run: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -1316,6 +1353,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .appendingPathComponent("local-preferences.json")
     }
 
+    private func petStateURL() -> URL {
+        return preferencesURL()
+            .deletingLastPathComponent()
+            .appendingPathComponent("pet-state.json")
+    }
+
     private func loadPreferences() -> LocalPreferences {
         let url = preferencesURL()
         do {
@@ -1323,6 +1366,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return try JSONDecoder().decode(LocalPreferences.self, from: data)
         } catch {
             return LocalPreferences()
+        }
+    }
+
+    private func loadPetState() -> PetState {
+        let url = petStateURL()
+        do {
+            let data = try Data(contentsOf: url)
+            return try JSONDecoder().decode(PetState.self, from: data).normalizedAfterLaunch()
+        } catch {
+            return PetState()
+        }
+    }
+
+    private func savePetState() {
+        let url = petStateURL()
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let data = try JSONEncoder().encode(petState)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            print("Aime pet state could not be saved: \(error.localizedDescription)")
         }
     }
 

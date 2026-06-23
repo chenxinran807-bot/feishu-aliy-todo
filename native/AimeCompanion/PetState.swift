@@ -86,6 +86,14 @@ struct PetState: Codable, Equatable {
         state.dogMood = .walking
         return state
     }
+
+    func normalizedAfterLaunch() -> PetState {
+        var state = self
+        if state.dogMood == .walking || state.dogMood == .happyReturn {
+            state.dogMood = .idle
+        }
+        return state
+    }
 }
 
 private func priorityRank(_ priority: String) -> Int {
