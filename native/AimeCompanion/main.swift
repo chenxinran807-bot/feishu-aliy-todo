@@ -262,7 +262,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let orbText = preferences.displayStyle == "cute" ? dogFace() : avatarText()
-        let orb = label(orbText, size: 16, weight: .bold, color: avatarTextColor())
+        let orbSize: CGFloat = preferences.displayStyle == "cute" ? 24 : 16
+        let orb = label(orbText, size: orbSize, weight: .bold, color: avatarTextColor())
         orb.alignment = .center
         orb.wantsLayer = true
         orb.layer?.backgroundColor = avatarColor().cgColor
@@ -288,12 +289,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func compactSummaryText(openCount: Int, overdueCount: Int) -> String {
         if preferences.displayStyle == "cute" {
             if petState.p0Count > 0 {
-                return "有 \(petState.p0Count) 个 P0 任务"
+                return "P0 · \(petState.p0Count)"
             }
             if petState.overdueCount > 0 {
-                return "有 \(petState.overdueCount) 件逾期"
+                return "逾期 · \(petState.overdueCount)"
             }
-            return "\(petState.pendingKibbleCount) 粒狗粮"
+            return "狗粮 · \(petState.pendingKibbleCount)"
         }
         return overdueCount > 0 ? "\(overdueCount) 逾期" : "\(openCount) 待办"
     }
@@ -316,7 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         metrics.alignment = .leading
         metrics.spacing = 6
         metrics.addArrangedSubview(metricRow([("P0", "\(petState.p0Count)"), ("逾期", "\(petState.overdueCount)")]))
-        metrics.addArrangedSubview(metricRow([("狗粮", "\(petState.pendingKibbleCount)"), ("遛狗", "\(petState.fedTodayCount)")]))
+        metrics.addArrangedSubview(metricPill(title: "待领取狗粮", value: "\(petState.pendingKibbleCount)", columns: 1))
 
         stack.addArrangedSubview(nextTaskRow)
         stack.addArrangedSubview(metrics)
@@ -336,8 +337,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return row
     }
 
-    private func metricPill(title: String, value: String) -> NSView {
-        let width = max(80, (contentWidth() - 20 - 6) / 2)
+    private func metricPill(title: String, value: String, columns: Int = 2) -> NSView {
+        let innerWidth = contentWidth() - 20
+        let width = columns <= 1 ? innerWidth : max(80, (innerWidth - 6) / CGFloat(columns))
         let container = NSView()
         container.wantsLayer = true
         container.layer?.backgroundColor = styleStatusBackgroundColor().cgColor
@@ -388,9 +390,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func dogStateLine() -> String {
         switch petState.dogMood {
         case .walking:
-            return "完成得好，带小狗出门散步中"
+            return "遛狗 +1，小狗出门散步中"
         case .happyReturn:
-            return "散步回来啦，今天已投喂 \(petState.fedTodayCount) 次"
+            return "散步回来啦，今天已遛狗 \(petState.fedTodayCount) 次"
         case .concerned:
             if petState.p0Count > 0 {
                 return "小狗叼着牵引绳：还有 \(petState.p0Count) 件 P0 在等你"
@@ -507,7 +509,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         orb.widthAnchor.constraint(equalToConstant: 44).isActive = true
         orb.heightAnchor.constraint(equalToConstant: 44).isActive = true
 
-        let summary = label("\(openCount) open · \(overdueCount) overdue", size: 17, weight: .semibold)
+        let summaryText = preferences.displayStyle == "cute"
+            ? cuteHeaderSummary(openCount: openCount, overdueCount: overdueCount)
+            : "\(openCount) open · \(overdueCount) overdue"
+        let summarySize: CGFloat = preferences.displayStyle == "cute" ? 13 : 17
+        let summary = label(summaryText, size: summarySize, weight: .semibold)
         let titleStack = NSStackView()
         titleStack.orientation = .vertical
         titleStack.spacing = 2
@@ -525,6 +531,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         row.addArrangedSubview(more)
         row.addArrangedSubview(collapse)
         return row
+    }
+
+    private func cuteHeaderSummary(openCount: Int, overdueCount: Int) -> String {
+        if petState.p0Count > 0 {
+            return "P0 · \(petState.p0Count) / 狗粮 · \(petState.pendingKibbleCount)"
+        }
+        if overdueCount > 0 {
+            return "逾期 · \(overdueCount) / 狗粮 · \(petState.pendingKibbleCount)"
+        }
+        return "狗粮 · \(petState.pendingKibbleCount)"
     }
 
     private func menuButton(title: String, action: Selector, payload: String = "") -> AimeMenuButton {
