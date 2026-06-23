@@ -46,6 +46,11 @@ npm test
 - The "识别屏幕" action captures the current screen, runs local macOS OCR, and lets you confirm/edit a new task before writing to Base.
 - "开始实时识别" runs local OCR every 45 seconds after the user explicitly enables it, and still asks for confirmation before creating a task.
 - New-task and overdue reminders use a lightweight sound/panel cue in the local MVP, with friendlier copy in Cute style.
+- Cute style can run as a dog-den todo companion: new actionable tasks appear as pending kibble, and completed tasks feed the dog.
+- Completion rewards trigger a short "walk the dog" state only after completion writes back to Lark Base.
+- P0 and overdue tasks use gentle dog reminder copy instead of punitive alerts.
+- Dragging the small dog onto a visible Lark/Feishu window can trigger screen sniffing; the app still asks for confirmation before creating tasks.
+- The first companion skin is dog-based; future skins can use cats, birds, plants, or user-uploaded pet photos while reusing the same completion reward model.
 - Completion status and due date/time are written back to Lark Base.
 - Pinning, hidden state, P0/P1/P2 priority, and filter preferences are stored locally on this Mac.
 - Long-term project progress logic is retained but no longer shown in the default compact panel.
@@ -76,6 +81,8 @@ The current MVP can pull records from the existing Aime Base through `lark-cli`.
 - Auto-refresh pulled task records every 5 minutes while the widget is running.
 - Write completion status and due date back to Base.
 - Keep reminders, hidden state, pinning, and progress overrides local.
+
+Pet state is local to the Mac. Fed count, intimacy, companion mood, and rewarded-task ids are stored in Application Support next to the existing local preferences. Lark Base remains the source of truth for task status and due dates.
 
 ## UI References
 
