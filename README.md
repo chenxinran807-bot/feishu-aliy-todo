@@ -55,3 +55,39 @@ The current MVP uses local sample data until Lark authorization and field mappin
 - Pull task records from the Base table.
 - Write completion status and due date back to Base.
 - Keep reminders, hidden state, pinning, and progress overrides local.
+
+## Lark/Aime Sync Preview
+
+The sync preview uses `lark-cli` and the config in `config/aime-base.example.json`.
+
+Authorize Lark if needed:
+
+```bash
+lark-cli auth login
+```
+
+Inspect fields:
+
+```bash
+npm run lark:fields
+```
+
+Pull tasks as normalized JSON:
+
+```bash
+npm run lark:pull
+```
+
+Write completion status back to Base:
+
+```bash
+npm run lark:complete -- --record-id rec_xxx
+```
+
+Write a new due date back to Base:
+
+```bash
+npm run lark:reschedule -- --record-id rec_xxx --due-date 2026-06-24
+```
+
+Before live use, update the field names in `config/aime-base.example.json` to match the real Aime Base table. The current environment needs the `base:field:read` scope before `npm run lark:fields` can succeed.

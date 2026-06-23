@@ -1,0 +1,19 @@
+{
+  "baseToken": "F4k1bKUkRaIafPsKxP2cVAyEnwJ",
+  "tableId": "tblllGcOFXODLI5I",
+  "viewId": "vewBgeF8ZA",
+  "identity": "user",
+  "limit": 100,
+  "statusDoneValue": "已完成",
+  "mapping": {
+    "title": "任务",
+    "status": "状态",
+    "dueDate": "截止日期",
+    "sourceType": "来源",
+    "sourceUrl": "来源链接",
+    "owner": "负责人",
+    "project": "项目",
+    "createdAt": "创建时间",
+    "updatedAt": "更新时间"
+  }
+}
