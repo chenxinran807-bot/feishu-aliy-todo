@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let bridge = NativeBridge()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
 
         let htmlPath = resolveHTMLPath()
         let configuration = WKWebViewConfiguration()
@@ -60,29 +60,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         webView.setValue(false, forKey: "drawsBackground")
 
         window = NSWindow(
-            contentRect: NSRect(x: 80, y: 720, width: 380, height: 260),
+            contentRect: initialWidgetFrame(),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
         window.contentView = webView
-        window.backgroundColor = .clear
+        window.backgroundColor = NSColor(calibratedWhite: 1.0, alpha: 0.96)
         window.isOpaque = false
         window.hasShadow = true
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         window.isMovableByWindowBackground = true
+        window.title = "Aime"
         bridge.window = window
 
         webView.loadFileURL(URL(fileURLWithPath: htmlPath), allowingReadAccessTo: URL(fileURLWithPath: htmlPath).deletingLastPathComponent())
         window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
 
         createStatusItem()
     }
 
     private func createStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "Ai"
+        statusItem.button?.title = "Aime"
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Show Widget", action: #selector(showWidget), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
@@ -90,7 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showWidget() {
+        window.setFrame(initialWidgetFrame(), display: true, animate: true)
         window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func quit() {
@@ -104,6 +108,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let currentDirectory = FileManager.default.currentDirectoryPath
         return "\(currentDirectory)/dist/index.html"
+    }
+
+    private func initialWidgetFrame() -> NSRect {
+        let size = NSSize(width: 380, height: 260)
+        let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        return NSRect(
+            x: visibleFrame.maxX - size.width - 32,
+            y: visibleFrame.maxY - size.height - 48,
+            width: size.width,
+            height: size.height
+        )
     }
 }
 

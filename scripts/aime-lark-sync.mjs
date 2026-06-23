@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -125,6 +125,17 @@ function explainLarkFailure(stdout, stderr, status) {
 }
 
 function extractRecords(envelope) {
+  if (
+    Array.isArray(envelope?.data?.data) &&
+    Array.isArray(envelope?.data?.fields) &&
+    Array.isArray(envelope?.data?.record_id_list)
+  ) {
+    return envelope.data.data.map((row, rowIndex) => ({
+      record_id: envelope.data.record_id_list[rowIndex],
+      fields: Object.fromEntries(envelope.data.fields.map((fieldName, columnIndex) => [fieldName, row[columnIndex]])),
+    }));
+  }
+
   const candidates = [
     envelope?.data?.items,
     envelope?.data?.records,
@@ -177,7 +188,9 @@ function readConfig(configPath) {
 }
 
 function writeJson(outputPath, value) {
-  writeFileSync(resolve(projectRoot, outputPath), `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const absolutePath = resolve(projectRoot, outputPath);
+  mkdirSync(dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 function getFlag(values, name) {
@@ -217,7 +230,9 @@ function asSourceType(value) {
   if (!text) return undefined;
   if (text.includes("meeting") || text.includes("会议")) return "meeting_note";
   if (text.includes("private") || text.includes("私聊")) return "private_chat";
-  if (text.includes("group") || text.includes("群")) return "group_chat";
+  if (text.includes("group") || text.includes("群") || text.includes("chat") || text.includes("聊天")) {
+    return "group_chat";
+  }
   return "manual";
 }
 
@@ -245,7 +260,7 @@ function asIsoDate(value) {
 }
 
 function asText(value) {
-  if (typeof value === "string") return value.trim();
+  if (typeof value === "string") return extractMarkdownUrl(value.trim()) ?? value.trim();
   if (typeof value === "number") return String(value);
   if (Array.isArray(value)) return value.map(asText).filter(Boolean).join(", ");
   if (value && typeof value === "object") {
@@ -255,6 +270,10 @@ function asText(value) {
     if (typeof value.url === "string") return value.url.trim();
   }
   return "";
+}
+
+function extractMarkdownUrl(value) {
+  return value.match(/^\[[^\]]+\]\(([^)]+)\)$/)?.[1];
 }
 
 function tryParseJson(value) {

@@ -5,4 +5,5 @@
 .build/
 node_modules/
 dist/
+tmp/
 dist-electron/

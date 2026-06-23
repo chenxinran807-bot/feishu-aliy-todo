@@ -60,6 +60,18 @@ The current MVP uses local sample data until Lark authorization and field mappin
 
 The sync preview uses `lark-cli` and the config in `config/aime-base.example.json`.
 
+If your terminal is not already inside this project, either `cd` first:
+
+```bash
+cd "/Users/bytedance/Documents/todo agent/.worktrees/aime-desktop-mvp"
+```
+
+Or run commands from anywhere with:
+
+```bash
+npm --prefix "/Users/bytedance/Documents/todo agent/.worktrees/aime-desktop-mvp" run lark:fields
+```
+
 Authorize Lark if needed:
 
 ```bash

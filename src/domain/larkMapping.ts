@@ -87,7 +87,9 @@ function asSourceType(value: unknown): SourceType | undefined {
   if (!text) return undefined;
   if (text.includes("meeting") || text.includes("会议")) return "meeting_note";
   if (text.includes("private") || text.includes("私聊")) return "private_chat";
-  if (text.includes("group") || text.includes("群")) return "group_chat";
+  if (text.includes("group") || text.includes("群") || text.includes("chat") || text.includes("聊天")) {
+    return "group_chat";
+  }
   return "manual";
 }
 
@@ -109,7 +111,7 @@ function asIsoDate(value: unknown): string | undefined {
 }
 
 function asText(value: unknown): string {
-  if (typeof value === "string") return value.trim();
+  if (typeof value === "string") return extractMarkdownUrl(value.trim()) ?? value.trim();
   if (typeof value === "number") return String(value);
   if (Array.isArray(value)) return value.map(asText).filter(Boolean).join(", ");
   if (value && typeof value === "object") {
@@ -120,4 +122,8 @@ function asText(value: unknown): string {
     if (typeof objectValue.url === "string") return objectValue.url.trim();
   }
   return "";
+}
+
+function extractMarkdownUrl(value: string): string | undefined {
+  return value.match(/^\[[^\]]+\]\(([^)]+)\)$/)?.[1];
 }

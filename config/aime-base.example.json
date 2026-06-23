@@ -6,14 +6,12 @@
   "limit": 100,
   "statusDoneValue": "已完成",
   "mapping": {
-    "title": "任务",
+    "title": "任务名称",
     "status": "状态",
-    "dueDate": "截止日期",
+    "dueDate": "截止时间",
     "sourceType": "来源",
     "sourceUrl": "来源链接",
-    "owner": "负责人",
-    "project": "项目",
-    "createdAt": "创建时间",
-    "updatedAt": "更新时间"
+    "project": "任务类别",
+    "updatedAt": "飞书任务最近同步时间"
   }
 }
