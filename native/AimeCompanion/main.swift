@@ -310,14 +310,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         nextTaskRow.alignment = .leading
         nextTaskRow.spacing = 3
         nextTaskRow.addArrangedSubview(label("下一件最重要的事", size: 11, weight: .medium, color: mutedColor()))
-        nextTaskRow.addArrangedSubview(label(nextTaskTitle(from: tasks), size: 14, weight: .semibold))
+        nextTaskRow.addArrangedSubview(label(nextTaskTitle(from: tasks), size: 16, weight: .bold))
+        nextTaskRow.addArrangedSubview(label(nextTaskMeta(from: tasks), size: 11, weight: .medium, color: mutedColor()))
 
         let metrics = NSStackView()
-        metrics.orientation = .vertical
-        metrics.alignment = .leading
+        metrics.orientation = .horizontal
+        metrics.alignment = .centerY
         metrics.spacing = 6
-        metrics.addArrangedSubview(metricRow([("P0", "\(petState.p0Count)"), ("逾期", "\(petState.overdueCount)")]))
-        metrics.addArrangedSubview(metricPill(title: "待领取狗粮", value: "\(petState.pendingKibbleCount)", columns: 1))
+        metrics.addArrangedSubview(metricPill(title: "P0", value: "\(petState.p0Count)", columns: 3))
+        metrics.addArrangedSubview(metricPill(title: "逾期", value: "\(petState.overdueCount)", columns: 3))
+        metrics.addArrangedSubview(metricPill(title: "待领取狗粮", value: "\(petState.pendingKibbleCount)", columns: 3))
 
         stack.addArrangedSubview(nextTaskRow)
         stack.addArrangedSubview(metrics)
@@ -339,7 +341,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func metricPill(title: String, value: String, columns: Int = 2) -> NSView {
         let innerWidth = contentWidth() - 20
-        let width = columns <= 1 ? innerWidth : max(80, (innerWidth - 6) / CGFloat(columns))
+        let totalGap = CGFloat(max(0, columns - 1)) * 6
+        let minimumWidth: CGFloat = columns >= 3 ? 58 : 80
+        let width = columns <= 1 ? innerWidth : max(minimumWidth, (innerWidth - totalGap) / CGFloat(columns))
         let container = NSView()
         container.wantsLayer = true
         container.layer?.backgroundColor = styleStatusBackgroundColor().cgColor
@@ -347,7 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         container.translatesAutoresizingMaskIntoConstraints = false
         container.widthAnchor.constraint(equalToConstant: width).isActive = true
 
-        let titleLabel = label(title, size: 10, weight: .medium, color: mutedColor())
+        let titleLabel = label(title, size: columns >= 3 ? 9 : 10, weight: .medium, color: mutedColor())
         let valueLabel = label(value, size: 14, weight: .bold, color: NSColor.labelColor)
         titleLabel.maximumNumberOfLines = 1
         valueLabel.maximumNumberOfLines = 1
@@ -422,6 +426,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         let priority = preferences.priorityByTaskId[nextTask.id] ?? "P2"
         return "\(priority) · \(nextTask.title)"
+    }
+
+    private func nextTaskMeta(from tasks: [AimeTask]) -> String {
+        guard
+            let nextTaskId = petState.nextTaskId,
+            let nextTask = tasks.first(where: { $0.id == nextTaskId })
+        else {
+            return "完成一件后遛狗 +1"
+        }
+        return "\(nextTask.project ?? "未分类") · \(nextTask.dueDate ?? "无截止日期") · 完成后遛狗 +1"
     }
 
     private func styleStatusView(openCount: Int, overdueCount: Int) -> NSView? {
@@ -510,15 +524,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         orb.heightAnchor.constraint(equalToConstant: 44).isActive = true
 
         let summaryText = preferences.displayStyle == "cute"
-            ? cuteHeaderSummary(openCount: openCount, overdueCount: overdueCount)
+            ? "下一件最重要的事"
             : "\(openCount) open · \(overdueCount) overdue"
-        let summarySize: CGFloat = preferences.displayStyle == "cute" ? 13 : 17
+        let summarySize: CGFloat = preferences.displayStyle == "cute" ? 16 : 17
         let summary = label(summaryText, size: summarySize, weight: .semibold)
         let titleStack = NSStackView()
         titleStack.orientation = .vertical
         titleStack.spacing = 2
         titleStack.addArrangedSubview(label(styleTitle(), size: 12, weight: .medium, color: mutedColor()))
         titleStack.addArrangedSubview(summary)
+        if preferences.displayStyle == "cute" {
+            titleStack.addArrangedSubview(label("拖到飞书窗口：嗅探当前上下文", size: 10, weight: .medium, color: mutedColor()))
+        }
 
         let collapse = NSButton(title: "收起", target: self, action: #selector(collapseWidget))
         collapse.bezelStyle = .rounded
@@ -531,16 +548,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         row.addArrangedSubview(more)
         row.addArrangedSubview(collapse)
         return row
-    }
-
-    private func cuteHeaderSummary(openCount: Int, overdueCount: Int) -> String {
-        if petState.p0Count > 0 {
-            return "P0 · \(petState.p0Count) / 狗粮 · \(petState.pendingKibbleCount)"
-        }
-        if overdueCount > 0 {
-            return "逾期 · \(overdueCount) / 狗粮 · \(petState.pendingKibbleCount)"
-        }
-        return "狗粮 · \(petState.pendingKibbleCount)"
     }
 
     private func menuButton(title: String, action: Selector, payload: String = "") -> AimeMenuButton {
