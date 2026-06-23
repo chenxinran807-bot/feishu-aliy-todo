@@ -30,7 +30,7 @@ final class AimeActionButton: NSButton {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let defaultBaseURL = "https://bytedance.larkoffice.com/base/F4k1bKUkRaIafPsKxP2cVAyEnwJ?table=tblllGcOFXODLI5I&view=vewBgeF8ZA"
-    private let defaultAimeAssistantURL = "lark://client/chat/open?openChatId=oc_31661171e477fd90c1d62de8e2f1a84d"
+    private let defaultAimeAssistantURL = "https://applink.feishu.cn/client/chat/open?openChatId=oc_31661171e477fd90c1d62de8e2f1a84d"
 
     private var window: NSWindow!
     private var statusItem: NSStatusItem!
@@ -778,53 +778,133 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func taskDraftDialog(title: String, initialText: String) -> TaskDraft? {
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
+        var result: TaskDraft?
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 285),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = title
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.center()
+
+        let content = NSView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        panel.contentView = content
+
+        let heading = label(title, size: 17, weight: .semibold)
+        heading.translatesAutoresizingMaskIntoConstraints = false
+
+        let note = label("保存后会写入飞书 Base。", size: 12, color: mutedColor())
+        note.translatesAutoresizingMaskIntoConstraints = false
 
         let titleField = NSTextField(string: compactTaskTitle(initialText))
         titleField.placeholderString = "待办标题"
         titleField.translatesAutoresizingMaskIntoConstraints = false
-        titleField.widthAnchor.constraint(equalToConstant: 340).isActive = true
 
         let duePicker = NSDatePicker()
         duePicker.datePickerStyle = .textFieldAndStepper
         duePicker.datePickerElements = [.yearMonthDay, .hourMinute]
         duePicker.dateValue = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         duePicker.translatesAutoresizingMaskIntoConstraints = false
-        duePicker.widthAnchor.constraint(equalToConstant: 240).isActive = true
 
         let projectField = NSTextField(string: "")
         projectField.placeholderString = "分类，可留空"
         projectField.translatesAutoresizingMaskIntoConstraints = false
-        projectField.widthAnchor.constraint(equalToConstant: 240).isActive = true
 
-        stack.addArrangedSubview(label("标题", size: 11, color: mutedColor()))
-        stack.addArrangedSubview(titleField)
-        stack.addArrangedSubview(label("截止时间", size: 11, color: mutedColor()))
-        stack.addArrangedSubview(duePicker)
-        stack.addArrangedSubview(label("分类", size: 11, color: mutedColor()))
-        stack.addArrangedSubview(projectField)
+        let titleLabel = label("标题", size: 11, color: mutedColor())
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        let dueLabel = label("截止时间", size: 11, color: mutedColor())
+        dueLabel.translatesAutoresizingMaskIntoConstraints = false
+        let projectLabel = label("分类", size: 11, color: mutedColor())
+        projectLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = "保存后会写入飞书 Base。"
-        alert.accessoryView = stack
-        alert.addButton(withTitle: "保存")
-        alert.addButton(withTitle: "取消")
+        let cancelButton = NSButton(title: "取消", target: nil, action: nil)
+        cancelButton.bezelStyle = .rounded
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
 
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        let taskTitle = titleField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !taskTitle.isEmpty else { return nil }
+        let saveButton = NSButton(title: "保存", target: nil, action: nil)
+        saveButton.bezelStyle = .rounded
+        saveButton.keyEquivalent = "\r"
+        saveButton.translatesAutoresizingMaskIntoConstraints = false
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return TaskDraft(
-            title: taskTitle,
-            dueDate: formatter.string(from: duePicker.dateValue),
-            project: projectField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        )
+        [heading, note, titleLabel, titleField, dueLabel, duePicker, projectLabel, projectField, cancelButton, saveButton].forEach {
+            content.addSubview($0)
+        }
+
+        NSLayoutConstraint.activate([
+            heading.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
+            heading.topAnchor.constraint(equalTo: content.topAnchor, constant: 22),
+
+            note.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            note.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 6),
+
+            titleLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            titleLabel.topAnchor.constraint(equalTo: note.bottomAnchor, constant: 18),
+
+            titleField.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            titleField.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+            titleField.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            titleField.heightAnchor.constraint(equalToConstant: 28),
+
+            dueLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            dueLabel.topAnchor.constraint(equalTo: titleField.bottomAnchor, constant: 12),
+
+            duePicker.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            duePicker.topAnchor.constraint(equalTo: dueLabel.bottomAnchor, constant: 4),
+            duePicker.widthAnchor.constraint(equalToConstant: 240),
+            duePicker.heightAnchor.constraint(equalToConstant: 28),
+
+            projectLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            projectLabel.topAnchor.constraint(equalTo: duePicker.bottomAnchor, constant: 12),
+
+            projectField.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            projectField.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+            projectField.topAnchor.constraint(equalTo: projectLabel.bottomAnchor, constant: 4),
+            projectField.heightAnchor.constraint(equalToConstant: 28),
+
+            saveButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+            saveButton.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -18),
+            saveButton.widthAnchor.constraint(equalToConstant: 96),
+
+            cancelButton.trailingAnchor.constraint(equalTo: saveButton.leadingAnchor, constant: -10),
+            cancelButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
+            cancelButton.widthAnchor.constraint(equalToConstant: 96),
+        ])
+
+        cancelButton.target = self
+        cancelButton.action = #selector(closeModalPanel(_:))
+        cancelButton.tag = 0
+
+        saveButton.target = self
+        saveButton.action = #selector(closeModalPanel(_:))
+        saveButton.tag = 1
+
+        panel.makeFirstResponder(titleField)
+        let response = NSApp.runModal(for: panel)
+
+        if response == .OK {
+            let taskTitle = titleField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !taskTitle.isEmpty {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                result = TaskDraft(
+                    title: taskTitle,
+                    dueDate: formatter.string(from: duePicker.dateValue),
+                    project: projectField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+            }
+        }
+
+        panel.close()
+        return result
+    }
+
+    @objc private func closeModalPanel(_ sender: NSButton) {
+        NSApp.stopModal(withCode: sender.tag == 1 ? .OK : .cancel)
     }
 
     private func compactTaskTitle(_ text: String) -> String {
