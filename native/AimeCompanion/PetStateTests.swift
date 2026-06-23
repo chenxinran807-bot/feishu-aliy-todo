@@ -123,6 +123,18 @@ struct PetStateTests {
             nextTaskId: nil
         )
         assertEqual(persistedHappyReturn.normalizedAfterLaunch().dogMood, .idle, "launch should recover from transient happy-return mood")
+        let persistedSniffing = PetState(
+            pendingKibbleCount: 0,
+            fedTodayCount: 1,
+            intimacy: 8,
+            dogMood: .sniffing,
+            lastRewardedTaskIds: ["new-task"],
+            rewardDate: "2026-06-23",
+            p0Count: 0,
+            overdueCount: 0,
+            nextTaskId: nil
+        )
+        assertEqual(persistedSniffing.normalizedAfterLaunch().dogMood, .idle, "launch should recover from transient sniffing mood")
 
         let sniffingSnapshot = PetState.derive(
             tasks: tasks,

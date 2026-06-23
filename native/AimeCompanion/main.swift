@@ -182,7 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         containerView.layer?.cornerRadius = panelCornerRadius()
     }
 
-    private func reloadTasks() {
+    private func reloadTasks(derivePetState: Bool = true) {
         let tasks = loadTasks()
         rootStack.arrangedSubviews.forEach { view in
             rootStack.removeArrangedSubview(view)
@@ -199,8 +199,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return dueDate < todayKey()
         }
         let sortedTasks = sortTasks(visibleTasks)
-        petState = PetState.derive(tasks: tasks, preferences: preferences, previous: petState, today: todayKey())
-        savePetState()
+        if derivePetState {
+            petState = PetState.derive(tasks: tasks, preferences: preferences, previous: petState, today: todayKey())
+            savePetState()
+        }
         lastKnownTaskCount = tasks.count
         lastKnownOverdueCount = overdueTasks.count
 
@@ -1067,6 +1069,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 "小狗准备好了",
                 detail: "把小狗拖到飞书聊天或会议纪要窗口附近触发当前屏幕识别。"
             )
+            finishSniffing(as: .idle)
         }
     }
 
@@ -1119,15 +1122,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             finishSniffing(as: .idle)
             return
         }
-        createTask(title: draft.title, dueDate: draft.dueDate, project: draft.project)
-        finishSniffing(as: .foundTask)
+        if createTask(title: draft.title, dueDate: draft.dueDate, project: draft.project) {
+            finishSniffing(as: .foundTask)
+        } else {
+            finishSniffing(as: .idle)
+            showMessage("写入失败", detail: "小狗闻到了待办，但没有成功写入飞书 Base。")
+        }
     }
 
     private func finishSniffing(as mood: DogMood) {
         guard petState.dogMood == .sniffing else { return }
         petState.dogMood = mood
         savePetState()
-        reloadTasks()
+        reloadTasks(derivePetState: false)
     }
 
     private func isLikelyLarkWindow(at point: NSPoint) -> Bool {
@@ -1338,7 +1345,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         runSyncCommand(["pull", "--out", "tmp/aime-tasks.json"])
     }
 
-    private func createTask(title: String, dueDate: String?, project: String?) {
+    @discardableResult
+    private func createTask(title: String, dueDate: String?, project: String?) -> Bool {
         var arguments = ["create", "--title", title]
         if let dueDate, !dueDate.isEmpty {
             arguments += ["--due-date", dueDate]
@@ -1346,9 +1354,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if let project, !project.isEmpty {
             arguments += ["--project", project]
         }
-        runSyncCommand(arguments)
-        pullLatestTasks()
-        reloadTasks()
+        let succeeded = runSyncCommand(arguments)
+        if succeeded {
+            pullLatestTasks()
+            reloadTasks()
+        }
+        return succeeded
     }
 
     private func scheduleWalkReturn() {

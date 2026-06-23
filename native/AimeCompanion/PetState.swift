@@ -89,7 +89,7 @@ struct PetState: Codable, Equatable {
 
     func normalizedAfterLaunch() -> PetState {
         var state = self
-        if state.dogMood == .walking || state.dogMood == .happyReturn {
+        if state.dogMood == .walking || state.dogMood == .happyReturn || state.dogMood == .sniffing {
             state.dogMood = .idle
         }
         return state
