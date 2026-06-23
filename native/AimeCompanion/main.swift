@@ -1,90 +1,233 @@
 import AppKit
-import WebKit
+import Foundation
 
-final class NativeBridge: NSObject, WKScriptMessageHandler {
-    weak var window: NSWindow?
+struct TaskFeed: Decodable {
+    let tasks: [AimeTask]
+}
 
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard
-            message.name == "aimeNative",
-            let body = message.body as? [String: Any],
-            let command = body["command"] as? String
-        else {
-            return
-        }
-
-        switch command {
-        case "setWindowMode":
-            let mode = body["mode"] as? String ?? "widget"
-            resize(for: mode)
-        case "openFullWindow":
-            resize(for: "full")
-        case "console":
-            let level = body["level"] as? String ?? "log"
-            let message = body["message"] as? String ?? ""
-            print("Aime WebView \(level): \(message)")
-        default:
-            break
-        }
-    }
-
-    private func resize(for mode: String) {
-        guard let window else { return }
-
-        let size: NSSize
-        switch mode {
-        case "peek":
-            size = NSSize(width: 540, height: 700)
-        case "full":
-            size = NSSize(width: 980, height: 680)
-        default:
-            size = NSSize(width: 380, height: 260)
-        }
-
-        var frame = window.frame
-        frame.origin.y += frame.height - size.height
-        frame.size = size
-        window.setFrame(frame, display: true, animate: true)
-    }
+struct AimeTask: Decodable {
+    let id: String
+    let title: String
+    let status: String
+    let dueDate: String?
+    let project: String?
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
     private var statusItem: NSStatusItem!
-    private let bridge = NativeBridge()
+    private var rootStack: NSStackView!
+    private var taskFeedPath: String = ""
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        taskFeedPath = resolveTaskFeedPath()
 
-        let htmlPath = resolveHTMLPath()
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController.addUserScript(consoleBridgeScript())
-        configuration.userContentController.add(bridge, name: "aimeNative")
-
-        let webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.setValue(false, forKey: "drawsBackground")
-
+        let frame = initialWidgetFrame()
         window = NSWindow(
-            contentRect: initialWidgetFrame(),
+            contentRect: frame,
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
-        window.contentView = webView
-        window.backgroundColor = NSColor(calibratedWhite: 1.0, alpha: 0.96)
+        window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = true
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         window.isMovableByWindowBackground = true
         window.title = "Aime"
-        bridge.window = window
+        window.contentView = buildContentView(frame: frame)
 
-        webView.loadFileURL(URL(fileURLWithPath: htmlPath), allowingReadAccessTo: URL(fileURLWithPath: htmlPath).deletingLastPathComponent())
+        reloadTasks()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-
         createStatusItem()
+    }
+
+    private func buildContentView(frame: NSRect) -> NSView {
+        let container = NSVisualEffectView(frame: NSRect(origin: .zero, size: frame.size))
+        container.material = .hudWindow
+        container.blendingMode = .behindWindow
+        container.state = .active
+        container.wantsLayer = true
+        container.layer?.cornerRadius = 18
+        container.layer?.masksToBounds = true
+        container.autoresizingMask = [.width, .height]
+
+        rootStack = NSStackView()
+        rootStack.orientation = .vertical
+        rootStack.alignment = .leading
+        rootStack.spacing = 10
+        rootStack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(rootStack)
+
+        NSLayoutConstraint.activate([
+            rootStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            rootStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            rootStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 14),
+            rootStack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -14),
+        ])
+
+        return container
+    }
+
+    private func reloadTasks() {
+        let tasks = loadTasks()
+        rootStack.arrangedSubviews.forEach { view in
+            rootStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+
+        let openTasks = tasks.filter { $0.status != "done" }
+        let overdueTasks = openTasks.filter { task in
+            guard let dueDate = task.dueDate else { return false }
+            return dueDate < todayKey()
+        }
+        let todayTasks = openTasks.filter { $0.dueDate == todayKey() }
+        let nextTask = overdueTasks.first ?? todayTasks.first ?? openTasks.first
+
+        rootStack.addArrangedSubview(headerRow(openCount: openTasks.count, overdueCount: overdueTasks.count))
+        rootStack.addArrangedSubview(nextTaskView(nextTask))
+        rootStack.addArrangedSubview(projectProgressView(tasks: tasks, projectName: "AI试穿"))
+        rootStack.addArrangedSubview(projectProgressView(tasks: tasks, projectName: "AI穿搭"))
+        rootStack.addArrangedSubview(footerView(tasksCount: tasks.count))
+    }
+
+    private func headerRow(openCount: Int, overdueCount: Int) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 10
+
+        let orb = label("Ai", size: 17, weight: .bold, color: .white)
+        orb.alignment = .center
+        orb.wantsLayer = true
+        orb.layer?.backgroundColor = NSColor(calibratedRed: 0.14, green: 0.36, blue: 0.32, alpha: 1).cgColor
+        orb.layer?.cornerRadius = 22
+        orb.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        orb.heightAnchor.constraint(equalToConstant: 44).isActive = true
+
+        let summary = label("\(openCount) open · \(overdueCount) overdue", size: 17, weight: .semibold)
+        let titleStack = NSStackView()
+        titleStack.orientation = .vertical
+        titleStack.spacing = 2
+        titleStack.addArrangedSubview(label("Aime 桌面端", size: 12, weight: .medium, color: mutedColor()))
+        titleStack.addArrangedSubview(summary)
+
+        row.addArrangedSubview(orb)
+        row.addArrangedSubview(titleStack)
+        return row
+    }
+
+    private func nextTaskView(_ task: AimeTask?) -> NSView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 4
+        stack.addArrangedSubview(label("下一件事", size: 12, weight: .medium, color: mutedColor()))
+
+        if let task {
+            stack.addArrangedSubview(label(task.title, size: 14, weight: .semibold))
+            stack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 12, color: mutedColor()))
+        } else {
+            stack.addArrangedSubview(label("目前没有未完成任务", size: 14, weight: .semibold))
+        }
+        return card(stack)
+    }
+
+    private func projectProgressView(tasks: [AimeTask], projectName: String) -> NSView {
+        let projectTasks = tasks.filter { $0.project == projectName }
+        let doneCount = projectTasks.filter { $0.status == "done" }.count
+        let totalCount = max(projectTasks.count, 1)
+        let percent = Double(doneCount) / Double(totalCount)
+
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+
+        let title = label("\(projectName) \(Int(percent * 100))%", size: 13, weight: .semibold)
+        let progress = NSProgressIndicator()
+        progress.isIndeterminate = false
+        progress.minValue = 0
+        progress.maxValue = 1
+        progress.doubleValue = percent
+        progress.controlSize = .small
+        progress.translatesAutoresizingMaskIntoConstraints = false
+        progress.widthAnchor.constraint(equalToConstant: 320).isActive = true
+
+        stack.addArrangedSubview(title)
+        stack.addArrangedSubview(progress)
+        stack.addArrangedSubview(label("auto from \(doneCount)/\(projectTasks.count) tasks", size: 11, color: mutedColor()))
+        return stack
+    }
+
+    private func footerView(tasksCount: Int) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+
+        let refresh = NSButton(title: "刷新", target: self, action: #selector(refreshClicked))
+        refresh.bezelStyle = .rounded
+        refresh.controlSize = .small
+
+        row.addArrangedSubview(label("\(tasksCount) tasks from Aime Base", size: 11, color: mutedColor()))
+        row.addArrangedSubview(refresh)
+        return row
+    }
+
+    private func card(_ content: NSView) -> NSView {
+        let wrapper = NSView()
+        wrapper.wantsLayer = true
+        wrapper.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.72).cgColor
+        wrapper.layer?.cornerRadius = 8
+        content.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.addSubview(content)
+
+        NSLayoutConstraint.activate([
+            wrapper.widthAnchor.constraint(equalToConstant: 340),
+            content.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: 10),
+            content.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor, constant: -10),
+            content.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: 8),
+            content.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor, constant: -8),
+        ])
+
+        return wrapper
+    }
+
+    private func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = NSColor.labelColor) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.font = NSFont.systemFont(ofSize: size, weight: weight)
+        field.textColor = color
+        field.lineBreakMode = .byTruncatingTail
+        field.maximumNumberOfLines = 2
+        return field
+    }
+
+    private func mutedColor() -> NSColor {
+        NSColor.secondaryLabelColor
+    }
+
+    private func loadTasks() -> [AimeTask] {
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: taskFeedPath))
+            let feed = try JSONDecoder().decode(TaskFeed.self, from: data)
+            return feed.tasks
+        } catch {
+            print("Aime task feed unavailable at \(taskFeedPath): \(error.localizedDescription)")
+            return [
+                AimeTask(id: "sample-1", title: "运行 npm run lark:pull 同步 Aime Base", status: "open", dueDate: todayKey(), project: "AI探索"),
+                AimeTask(id: "sample-2", title: "确认桌面小组件可见", status: "done", dueDate: todayKey(), project: "AI探索"),
+            ]
+        }
+    }
+
+    private func todayKey() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
     }
 
     private func createStatusItem() {
@@ -92,6 +235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.title = "Aime"
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Show Widget", action: #selector(showWidget), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Refresh", action: #selector(refreshClicked), keyEquivalent: "r"))
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
         statusItem.menu = menu
     }
@@ -102,17 +246,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    @objc private func refreshClicked() {
+        reloadTasks()
+        showWidget()
+    }
+
     @objc private func quit() {
         NSApp.terminate(nil)
     }
 
-    private func resolveHTMLPath() -> String {
+    private func resolveTaskFeedPath() -> String {
         if CommandLine.arguments.count > 1 {
             return CommandLine.arguments[1]
         }
 
         let currentDirectory = FileManager.default.currentDirectoryPath
-        return "\(currentDirectory)/dist/index.html"
+        return "\(currentDirectory)/tmp/aime-tasks.json"
     }
 
     private func initialWidgetFrame() -> NSRect {
@@ -124,36 +273,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             width: size.width,
             height: size.height
         )
-    }
-
-    private func consoleBridgeScript() -> WKUserScript {
-        let source = """
-        (function () {
-          function send(level, message) {
-            try {
-              window.webkit.messageHandlers.aimeNative.postMessage({
-                command: 'console',
-                level: level,
-                message: String(message)
-              });
-            } catch (_) {}
-          }
-          ['log', 'warn', 'error'].forEach(function (level) {
-            var original = console[level];
-            console[level] = function () {
-              send(level, Array.prototype.map.call(arguments, String).join(' '));
-              original.apply(console, arguments);
-            };
-          });
-          window.addEventListener('error', function (event) {
-            send('error', event.message + ' @ ' + event.filename + ':' + event.lineno + ':' + event.colno);
-          });
-          window.addEventListener('unhandledrejection', function (event) {
-            send('error', 'Unhandled promise rejection: ' + event.reason);
-          });
-        })();
-        """
-        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false)
     }
 }
 
