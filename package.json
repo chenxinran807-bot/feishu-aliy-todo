@@ -12,7 +12,7 @@
     "lark:complete": "node scripts/aime-lark-sync.mjs complete",
     "lark:ignore": "node scripts/aime-lark-sync.mjs ignore",
     "lark:reschedule": "node scripts/aime-lark-sync.mjs reschedule",
-    "native:build": "mkdir -p .build/module-cache && CLANG_MODULE_CACHE_PATH=\"$PWD/.build/module-cache\" swiftc -target arm64-apple-macosx15.0 native/AimeCompanion/main.swift -framework AppKit -framework Vision -o .build/aime-companion",
+    "native:build": "mkdir -p .build/module-cache && CLANG_MODULE_CACHE_PATH=\"$PWD/.build/module-cache\" swiftc -target arm64-apple-macosx15.0 native/AimeCompanion/main.swift -framework AppKit -framework Vision -framework UserNotifications -o .build/aime-companion",
     "native:run": "npm run lark:pull -- --out tmp/aime-tasks.json || true; npm run build && ./.build/aime-companion \"$PWD/tmp/aime-tasks.json\"",
     "build": "vite build && npm run native:build",
     "test": "vitest run",

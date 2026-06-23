@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UserNotifications
 import Vision
 
 struct TaskFeed: Decodable {
@@ -24,6 +25,7 @@ struct LocalPreferences: Codable {
     var statusFilter: String = "open"
     var expandedPanelWidth: Double = 400
     var expandedPanelHeight: Double = 560
+    var displayStyle: String = "refined"
 }
 
 final class AimeActionButton: NSButton {
@@ -32,6 +34,57 @@ final class AimeActionButton: NSButton {
 
 final class AimeMenuItem: NSMenuItem {
     var payload: String = ""
+}
+
+final class ResizeHandleView: NSView {
+    var onResizeEnded: (() -> Void)?
+    private var initialMouseLocation: NSPoint = .zero
+    private var initialFrame: NSRect = .zero
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        NSColor.secondaryLabelColor.withAlphaComponent(0.5).setStroke()
+        let path = NSBezierPath()
+        for offset in stride(from: 5, through: 15, by: 5) {
+            path.move(to: NSPoint(x: bounds.maxX - CGFloat(offset), y: 4))
+            path.line(to: NSPoint(x: bounds.maxX - 4, y: CGFloat(offset)))
+        }
+        path.lineWidth = 1.2
+        path.stroke()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        initialMouseLocation = NSEvent.mouseLocation
+        initialFrame = window?.frame ?? .zero
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let window else { return }
+        let currentLocation = NSEvent.mouseLocation
+        let deltaX = currentLocation.x - initialMouseLocation.x
+        let deltaY = currentLocation.y - initialMouseLocation.y
+        let minSize = window.minSize
+        let maxSize = window.maxSize
+        let width = min(max(initialFrame.width + deltaX, minSize.width), maxSize.width)
+        let height = min(max(initialFrame.height - deltaY, minSize.height), maxSize.height)
+        let frame = NSRect(
+            x: initialFrame.minX,
+            y: initialFrame.maxY - height,
+            width: width,
+            height: height
+        )
+        window.setFrame(frame, display: true)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        onResizeEnded?()
+    }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -48,6 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var autoRefreshTimer: Timer?
     private var screenMonitorTimer: Timer?
     private var lastRecognizedScreenText = ""
+    private var lastKnownTaskCount = 0
+    private var lastKnownOverdueCount = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -76,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         createStatusItem()
+        requestNotificationPermission()
         startAutoRefresh()
     }
 
@@ -123,6 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return dueDate < todayKey()
         }
         let sortedTasks = sortTasks(visibleTasks)
+        lastKnownTaskCount = tasks.count
+        lastKnownOverdueCount = overdueTasks.count
 
         if !isExpanded {
             rootStack.addArrangedSubview(compactWidget(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
@@ -132,6 +190,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
         rootStack.addArrangedSubview(filterView(tasks: tasks))
         rootStack.addArrangedSubview(taskListView(sortedTasks))
+        rootStack.addArrangedSubview(resizeHandle())
+    }
+
+    private func resizeHandle() -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 0
+
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.widthAnchor.constraint(equalToConstant: max(0, contentWidth() - 26)).isActive = true
+
+        let handle = ResizeHandleView(frame: NSRect(x: 0, y: 0, width: 22, height: 18))
+        handle.translatesAutoresizingMaskIntoConstraints = false
+        handle.widthAnchor.constraint(equalToConstant: 22).isActive = true
+        handle.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        handle.onResizeEnded = { [weak self] in
+            guard let self else { return }
+            self.saveExpandedPanelSize()
+            self.reloadTasks()
+        }
+
+        row.addArrangedSubview(spacer)
+        row.addArrangedSubview(handle)
+        return row
     }
 
     private func compactWidget(openCount: Int, overdueCount: Int) -> NSView {
@@ -153,7 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         orb.widthAnchor.constraint(equalToConstant: 40).isActive = true
         orb.heightAnchor.constraint(equalToConstant: 40).isActive = true
 
-        let summaryText = overdueCount > 0 ? "\(overdueCount) 逾期" : "\(openCount) 待办"
+        let summaryText = compactSummaryText(openCount: openCount, overdueCount: overdueCount)
         stack.addArrangedSubview(orb)
         stack.addArrangedSubview(label(summaryText, size: 11, weight: .semibold))
         button.addSubview(stack)
@@ -166,6 +250,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ])
 
         return button
+    }
+
+    private func compactSummaryText(openCount: Int, overdueCount: Int) -> String {
+        if preferences.displayStyle == "cute" {
+            return overdueCount > 0 ? "催你啦 \(overdueCount)" : "陪你做 \(openCount)"
+        }
+        return overdueCount > 0 ? "\(overdueCount) 逾期" : "\(openCount) 待办"
     }
 
     private func applyFilters(_ tasks: [AimeTask]) -> [AimeTask] {
@@ -250,6 +341,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         more.menu?.addItem(NSMenuItem.separator())
         addMenuItem("打开多维表格", to: more, action: #selector(openAimeBase))
         addMenuItem("打开 Aime 助手", to: more, action: #selector(openAimeAssistant))
+        more.menu?.addItem(NSMenuItem.separator())
+        addPayloadMenuItem("风格：简洁", payload: "minimal", to: more, action: #selector(changeDisplayStyle(_:)))
+        addPayloadMenuItem("风格：精致", payload: "refined", to: more, action: #selector(changeDisplayStyle(_:)))
+        addPayloadMenuItem("风格：可爱", payload: "cute", to: more, action: #selector(changeDisplayStyle(_:)))
         more.menu?.addItem(NSMenuItem.separator())
         addMenuItem(showingHiddenTasks ? "收起隐藏任务" : "显示隐藏任务", to: more, action: #selector(toggleShowHiddenTasks))
         addMenuItem("重置面板尺寸", to: more, action: #selector(resetExpandedPanelSize))
@@ -496,6 +591,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func cardColor(priority: String, isPinned: Bool) -> NSColor {
+        if preferences.displayStyle == "cute" {
+            if isPinned { return NSColor(calibratedRed: 1, green: 0.92, blue: 0.72, alpha: 0.95) }
+            if priority == "P0" { return NSColor(calibratedRed: 1, green: 0.84, blue: 0.88, alpha: 0.94) }
+            if priority == "P1" { return NSColor(calibratedRed: 0.86, green: 0.95, blue: 1, alpha: 0.92) }
+            return NSColor(calibratedRed: 0.98, green: 0.95, blue: 1, alpha: 0.82)
+        }
+        if preferences.displayStyle == "minimal" {
+            if isPinned { return NSColor.white.withAlphaComponent(0.9) }
+            if priority == "P0" { return NSColor(calibratedWhite: 1, alpha: 0.88) }
+            return NSColor.white.withAlphaComponent(0.72)
+        }
         if isPinned { return NSColor(calibratedRed: 1, green: 0.96, blue: 0.76, alpha: 0.92) }
         if priority == "P0" { return NSColor(calibratedRed: 1, green: 0.88, blue: 0.86, alpha: 0.9) }
         if priority == "P1" { return NSColor(calibratedRed: 0.9, green: 0.95, blue: 1, alpha: 0.85) }
@@ -503,6 +609,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func borderColor(priority: String, isPinned: Bool) -> NSColor {
+        if preferences.displayStyle == "minimal" {
+            if isPinned { return NSColor.secondaryLabelColor }
+            if priority == "P0" { return NSColor.systemRed.withAlphaComponent(0.7) }
+            return NSColor.clear
+        }
         if isPinned { return NSColor(calibratedRed: 0.9, green: 0.62, blue: 0.05, alpha: 1) }
         if priority == "P0" { return NSColor.systemRed }
         return NSColor.clear
@@ -622,8 +733,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func performAutoRefresh() {
+        let previousTaskCount = lastKnownTaskCount
+        let previousOverdueCount = lastKnownOverdueCount
         pullLatestTasks()
         reloadTasks()
+        notifyIfTaskStateChanged(previousTaskCount: previousTaskCount, previousOverdueCount: previousOverdueCount)
+    }
+
+    private func notifyIfTaskStateChanged(previousTaskCount: Int, previousOverdueCount: Int) {
+        if lastKnownTaskCount > previousTaskCount {
+            showStatusNotification(
+                title: preferences.displayStyle == "cute" ? "Aime 捡到新待办啦" : "Aime 有新待办",
+                body: "新增 \(lastKnownTaskCount - previousTaskCount) 个待办，点开看看。"
+            )
+        } else if lastKnownOverdueCount > previousOverdueCount {
+            showStatusNotification(
+                title: preferences.displayStyle == "cute" ? "有任务在轻轻催你" : "有任务已逾期",
+                body: "现在有 \(lastKnownOverdueCount) 个逾期待办。"
+            )
+        }
+    }
+
+    private func showStatusNotification(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        let request = UNNotificationRequest(
+            identifier: "aime-status-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     @objc private func addTaskClicked() {
@@ -744,6 +888,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func toggleShowHiddenTasks() {
         showingHiddenTasks.toggle()
+        reloadTasks()
+    }
+
+    @objc private func changeDisplayStyle(_ sender: AimeMenuItem) {
+        preferences.displayStyle = sender.payload
+        savePreferences()
         reloadTasks()
     }
 

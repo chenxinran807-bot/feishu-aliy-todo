@@ -38,10 +38,13 @@ npm test
 
 - Shows a small always-on-top floating badge using a native Swift/AppKit shell.
 - Clicking the badge expands a compact, resizable task list, sorted by pinned state, priority, and due date.
+- The expanded panel has a bottom-right resize handle and remembers the user's preferred size.
+- Users can choose Minimal, Refined, or Cute display styles from "更多".
 - The expanded panel keeps only common actions visible: complete, reschedule, filter, and task-level "more".
 - Less frequent actions live behind "更多": opening sources, pinning, hiding, ignoring, P0/P1/P2 priority, creating tasks, screen recognition, and Aime/Base shortcuts.
 - The "识别屏幕" action captures the current screen, runs local macOS OCR, and lets you confirm/edit a new task before writing to Base.
 - "开始实时识别" runs local OCR every 45 seconds after the user explicitly enables it, and still asks for confirmation before creating a task.
+- New-task and overdue reminders use native macOS notifications, with friendlier copy in Cute style.
 - Completion status and due date/time are written back to Lark Base.
 - Pinning, hidden state, P0/P1/P2 priority, and filter preferences are stored locally on this Mac.
 - Long-term project progress logic is retained but no longer shown in the default compact panel.
