@@ -96,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private var window: NSWindow!
     private var statusItem: NSStatusItem!
+    private var containerView: NSVisualEffectView!
     private var rootStack: NSStackView!
     private var taskFeedPath: String = ""
     private var preferences = LocalPreferences()
@@ -139,13 +140,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func buildContentView(frame: NSRect) -> NSView {
         let container = NSVisualEffectView(frame: NSRect(origin: .zero, size: frame.size))
-        container.material = .hudWindow
         container.blendingMode = .behindWindow
         container.state = .active
         container.wantsLayer = true
-        container.layer?.cornerRadius = 18
         container.layer?.masksToBounds = true
         container.autoresizingMask = [.width, .height]
+        containerView = container
+        applyWindowStyle()
 
         rootStack = NSStackView()
         rootStack.orientation = .vertical
@@ -162,6 +163,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ])
 
         return container
+    }
+
+    private func applyWindowStyle() {
+        guard let containerView else { return }
+        containerView.material = windowMaterial()
+        containerView.layer?.cornerRadius = panelCornerRadius()
     }
 
     private func reloadTasks() {
@@ -190,6 +197,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
+        if let statusView = styleStatusView(openCount: actionableTasks.count, overdueCount: overdueTasks.count) {
+            rootStack.addArrangedSubview(statusView)
+        }
         rootStack.addArrangedSubview(filterView(tasks: tasks))
         rootStack.addArrangedSubview(taskListView(sortedTasks))
         rootStack.addArrangedSubview(resizeHandle())
@@ -231,11 +241,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         stack.spacing = 4
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let orb = label("Ai", size: 16, weight: .bold, color: .white)
+        let orb = label(avatarText(), size: 16, weight: .bold, color: avatarTextColor())
         orb.alignment = .center
         orb.wantsLayer = true
-        orb.layer?.backgroundColor = NSColor(calibratedRed: 0.14, green: 0.36, blue: 0.32, alpha: 1).cgColor
-        orb.layer?.cornerRadius = 20
+        orb.layer?.backgroundColor = avatarColor().cgColor
+        orb.layer?.cornerRadius = avatarCornerRadius(size: 40)
         orb.widthAnchor.constraint(equalToConstant: 40).isActive = true
         orb.heightAnchor.constraint(equalToConstant: 40).isActive = true
 
@@ -259,6 +269,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return overdueCount > 0 ? "催你啦 \(overdueCount)" : "陪你做 \(openCount)"
         }
         return overdueCount > 0 ? "\(overdueCount) 逾期" : "\(openCount) 待办"
+    }
+
+    private func styleStatusView(openCount: Int, overdueCount: Int) -> NSView? {
+        if preferences.displayStyle == "minimal" { return nil }
+
+        let text: String
+        if preferences.displayStyle == "cute" {
+            text = overdueCount > 0
+                ? "Aime 正在轻轻提醒你：有 \(overdueCount) 件快来处理"
+                : "Aime 陪你盯着 \(openCount) 件事，慢慢来"
+        } else {
+            text = overdueCount > 0
+                ? "Focus: \(overdueCount) overdue needs attention"
+                : "Focus: \(openCount) active tasks"
+        }
+
+        let pill = label(text, size: 11, weight: .medium, color: styleStatusTextColor())
+        pill.wantsLayer = true
+        pill.layer?.backgroundColor = styleStatusBackgroundColor().cgColor
+        pill.layer?.cornerRadius = preferences.displayStyle == "cute" ? 12 : 7
+        return padded(pill, width: contentWidth(), vertical: preferences.displayStyle == "cute" ? 7 : 5)
     }
 
     private func applyFilters(_ tasks: [AimeTask]) -> [AimeTask] {
@@ -315,11 +346,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         row.alignment = .centerY
         row.spacing = 10
 
-        let orb = label("Ai", size: 17, weight: .bold, color: .white)
+        let orb = label(avatarText(), size: 17, weight: .bold, color: avatarTextColor())
         orb.alignment = .center
         orb.wantsLayer = true
-        orb.layer?.backgroundColor = NSColor(calibratedRed: 0.14, green: 0.36, blue: 0.32, alpha: 1).cgColor
-        orb.layer?.cornerRadius = 22
+        orb.layer?.backgroundColor = avatarColor().cgColor
+        orb.layer?.cornerRadius = avatarCornerRadius(size: 44)
         orb.widthAnchor.constraint(equalToConstant: 44).isActive = true
         orb.heightAnchor.constraint(equalToConstant: 44).isActive = true
 
@@ -327,7 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let titleStack = NSStackView()
         titleStack.orientation = .vertical
         titleStack.spacing = 2
-        titleStack.addArrangedSubview(label("任务伴随", size: 12, weight: .medium, color: mutedColor()))
+        titleStack.addArrangedSubview(label(styleTitle(), size: 12, weight: .medium, color: mutedColor()))
         titleStack.addArrangedSubview(summary)
 
         let collapse = NSButton(title: "收起", target: self, action: #selector(collapseWidget))
@@ -546,7 +577,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let wrapper = NSView()
         wrapper.wantsLayer = true
         wrapper.layer?.backgroundColor = cardColor(priority: priority, isPinned: isPinned).cgColor
-        wrapper.layer?.cornerRadius = 8
+        wrapper.layer?.cornerRadius = cardCornerRadius()
         wrapper.layer?.borderWidth = isPinned || priority == "P0" ? 2 : 0
         wrapper.layer?.borderColor = borderColor(priority: priority, isPinned: isPinned).cgColor
         content.translatesAutoresizingMaskIntoConstraints = false
@@ -560,6 +591,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             content.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor, constant: -8),
         ])
 
+        return wrapper
+    }
+
+    private func padded(_ content: NSView, width: CGFloat, vertical: CGFloat) -> NSView {
+        let wrapper = NSView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.addSubview(content)
+        NSLayoutConstraint.activate([
+            wrapper.widthAnchor.constraint(equalToConstant: width),
+            content.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: 10),
+            content.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor, constant: -10),
+            content.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: vertical),
+            content.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor, constant: -vertical),
+        ])
         return wrapper
     }
 
@@ -579,6 +624,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if priority == "P0" { return NSColor(calibratedRed: 1, green: 0.88, blue: 0.86, alpha: 0.9) }
         if priority == "P1" { return NSColor(calibratedRed: 0.9, green: 0.95, blue: 1, alpha: 0.85) }
         return NSColor.white.withAlphaComponent(0.72)
+    }
+
+    private func cardCornerRadius() -> CGFloat {
+        switch preferences.displayStyle {
+        case "minimal": return 5
+        case "cute": return 16
+        default: return 9
+        }
+    }
+
+    private func panelCornerRadius() -> CGFloat {
+        switch preferences.displayStyle {
+        case "minimal": return 10
+        case "cute": return 24
+        default: return 18
+        }
+    }
+
+    private func windowMaterial() -> NSVisualEffectView.Material {
+        switch preferences.displayStyle {
+        case "minimal": return .underWindowBackground
+        case "cute": return .popover
+        default: return .hudWindow
+        }
+    }
+
+    private func avatarText() -> String {
+        switch preferences.displayStyle {
+        case "minimal": return "A"
+        case "cute": return "Ai"
+        default: return "Ai"
+        }
+    }
+
+    private func avatarColor() -> NSColor {
+        switch preferences.displayStyle {
+        case "minimal": return NSColor(calibratedWhite: 0.16, alpha: 1)
+        case "cute": return NSColor(calibratedRed: 0.95, green: 0.45, blue: 0.68, alpha: 1)
+        default: return NSColor(calibratedRed: 0.14, green: 0.36, blue: 0.32, alpha: 1)
+        }
+    }
+
+    private func avatarTextColor() -> NSColor {
+        preferences.displayStyle == "cute" ? NSColor.white : NSColor.white
+    }
+
+    private func avatarCornerRadius(size: CGFloat) -> CGFloat {
+        switch preferences.displayStyle {
+        case "minimal": return 8
+        case "cute": return size / 2
+        default: return size / 2
+        }
+    }
+
+    private func styleTitle() -> String {
+        switch preferences.displayStyle {
+        case "minimal": return "Aime"
+        case "cute": return "Aime 陪伴"
+        default: return "任务伴随"
+        }
+    }
+
+    private func styleStatusBackgroundColor() -> NSColor {
+        switch preferences.displayStyle {
+        case "cute": return NSColor(calibratedRed: 1, green: 0.88, blue: 0.94, alpha: 0.88)
+        default: return NSColor(calibratedRed: 0.82, green: 0.9, blue: 0.88, alpha: 0.52)
+        }
+    }
+
+    private func styleStatusTextColor() -> NSColor {
+        switch preferences.displayStyle {
+        case "cute": return NSColor(calibratedRed: 0.52, green: 0.16, blue: 0.32, alpha: 1)
+        default: return NSColor(calibratedRed: 0.12, green: 0.28, blue: 0.25, alpha: 1)
+        }
     }
 
     private func borderColor(priority: String, isPinned: Bool) -> NSColor {
@@ -898,6 +1017,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func changeDisplayStyle(_ sender: AimeMenuItem) {
         preferences.displayStyle = sender.payload
         savePreferences()
+        applyWindowStyle()
         reloadTasks()
     }
 

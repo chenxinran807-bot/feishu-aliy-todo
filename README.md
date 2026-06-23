@@ -40,6 +40,7 @@ npm test
 - Clicking the badge expands a compact, resizable task list, sorted by pinned state, priority, and due date.
 - The expanded panel has a bottom-right resize handle and remembers the user's preferred size.
 - Users can choose Minimal, Refined, or Cute display styles from "更多".
+- Minimal is low-noise and monochrome, Refined uses a macOS HUD-like glass feel, and Cute adds a companion-style status line and pastel task cards.
 - The expanded panel keeps only common actions visible: complete, reschedule, filter, and task-level "more".
 - Less frequent actions live behind "更多": opening sources, pinning, hiding, ignoring, P0/P1/P2 priority, creating tasks, screen recognition, and Aime/Base shortcuts.
 - The "识别屏幕" action captures the current screen, runs local macOS OCR, and lets you confirm/edit a new task before writing to Base.
@@ -75,6 +76,16 @@ The current MVP can pull records from the existing Aime Base through `lark-cli`.
 - Auto-refresh pulled task records every 5 minutes while the widget is running.
 - Write completion status and due date back to Base.
 - Keep reminders, hidden state, pinning, and progress overrides local.
+
+## UI References
+
+The current style split borrows product patterns from:
+
+- `ntd4996/agentpet`: desktop companion state and playful task feedback.
+- `Wanduforl/MacArkPet`: native macOS desktop-pet presentation.
+- `bleeeet/TermiPet`: companion + status cards + quick commands.
+- `Liftof/littletodo`: tiny menu-bar todo with low-friction task access.
+- `wendybzhang/codex-quota-widget`: compact floating capsule density.
 
 ## Lark/Aime Sync Preview
 
