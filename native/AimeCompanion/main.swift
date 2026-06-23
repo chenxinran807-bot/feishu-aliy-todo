@@ -19,6 +19,10 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
             resize(for: mode)
         case "openFullWindow":
             resize(for: "full")
+        case "console":
+            let level = body["level"] as? String ?? "log"
+            let message = body["message"] as? String ?? ""
+            print("Aime WebView \(level): \(message)")
         default:
             break
         }
@@ -54,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let htmlPath = resolveHTMLPath()
         let configuration = WKWebViewConfiguration()
+        configuration.userContentController.addUserScript(consoleBridgeScript())
         configuration.userContentController.add(bridge, name: "aimeNative")
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -119,6 +124,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             width: size.width,
             height: size.height
         )
+    }
+
+    private func consoleBridgeScript() -> WKUserScript {
+        let source = """
+        (function () {
+          function send(level, message) {
+            try {
+              window.webkit.messageHandlers.aimeNative.postMessage({
+                command: 'console',
+                level: level,
+                message: String(message)
+              });
+            } catch (_) {}
+          }
+          ['log', 'warn', 'error'].forEach(function (level) {
+            var original = console[level];
+            console[level] = function () {
+              send(level, Array.prototype.map.call(arguments, String).join(' '));
+              original.apply(console, arguments);
+            };
+          });
+          window.addEventListener('error', function (event) {
+            send('error', event.message + ' @ ' + event.filename + ':' + event.lineno + ':' + event.colno);
+          });
+          window.addEventListener('unhandledrejection', function (event) {
+            send('error', 'Unhandled promise rejection: ' + event.reason);
+          });
+        })();
+        """
+        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false)
     }
 }
 

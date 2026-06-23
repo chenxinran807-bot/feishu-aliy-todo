@@ -1,4 +1,5 @@
 import type { AppSnapshot } from "../domain/types";
+import { sampleSnapshot } from "../data/sampleData";
 
 interface AimeDesktopApi {
   getSnapshot: () => Promise<AppSnapshot>;
@@ -27,17 +28,34 @@ declare global {
 const localStorageKey = "aime-desktop-task-companion.snapshot";
 
 async function loadLocalSnapshot(): Promise<AppSnapshot> {
-  const saved = window.localStorage.getItem(localStorageKey);
-  if (saved) return JSON.parse(saved) as AppSnapshot;
+  const saved = readLocalSnapshot();
+  if (saved) return saved;
 
-  const { sampleSnapshot } = await import("../data/sampleData");
-  window.localStorage.setItem(localStorageKey, JSON.stringify(sampleSnapshot));
+  writeLocalSnapshot(sampleSnapshot);
   return sampleSnapshot;
 }
 
 async function saveLocalSnapshot(snapshot: AppSnapshot): Promise<AppSnapshot> {
-  window.localStorage.setItem(localStorageKey, JSON.stringify(snapshot));
+  writeLocalSnapshot(snapshot);
   return snapshot;
+}
+
+function readLocalSnapshot(): AppSnapshot | undefined {
+  try {
+    const saved = window.localStorage.getItem(localStorageKey);
+    return saved ? (JSON.parse(saved) as AppSnapshot) : undefined;
+  } catch (error) {
+    console.warn("Aime local storage is unavailable, using in-memory sample data.", error);
+    return undefined;
+  }
+}
+
+function writeLocalSnapshot(snapshot: AppSnapshot): void {
+  try {
+    window.localStorage.setItem(localStorageKey, JSON.stringify(snapshot));
+  } catch (error) {
+    console.warn("Aime local storage write failed; this session will be temporary.", error);
+  }
 }
 
 function postNative(message: Record<string, unknown>): void {
