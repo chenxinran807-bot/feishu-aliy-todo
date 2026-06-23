@@ -21,8 +21,18 @@ function main() {
     case "pull":
       pull(config);
       return;
+    case "create":
+      createTask(config, {
+        title: requireArg(args, "--title"),
+        dueDate: getFlag(args, "--due-date"),
+        project: getFlag(args, "--project"),
+      });
+      return;
     case "complete":
       complete(config, requireArg(args, "--record-id"));
+      return;
+    case "ignore":
+      ignore(config, requireArg(args, "--record-id"));
       return;
     case "reschedule":
       reschedule(config, requireArg(args, "--record-id"), requireArg(args, "--due-date"));
@@ -55,11 +65,40 @@ function pull(config) {
   printJson({ tasks, count: tasks.length, pulledAt: new Date().toISOString() });
 }
 
+function createTask(config, task) {
+  const fields = [config.mapping.title, config.mapping.status];
+  const row = [task.title, config.statusOpenValue ?? "未完成"];
+
+  if (task.dueDate) {
+    assertDateKey(task.dueDate);
+    fields.push(config.mapping.dueDate);
+    row.push(task.dueDate);
+  }
+
+  if (task.project && config.mapping.project) {
+    fields.push(config.mapping.project);
+    row.push(task.project);
+  }
+
+  const payload = { fields, rows: [row] };
+  printJson(runLarkJson(["base", "+record-batch-create", ...baseArgs(config), "--json", JSON.stringify(payload)]));
+}
+
 function complete(config, recordId) {
   const patch = {
     record_id_list: [recordId],
     patch: {
       [config.mapping.status]: config.statusDoneValue ?? "已完成",
+    },
+  };
+  printJson(runLarkJson(["base", "+record-batch-update", ...baseArgs(config), "--json", JSON.stringify(patch)]));
+}
+
+function ignore(config, recordId) {
+  const patch = {
+    record_id_list: [recordId],
+    patch: {
+      [config.mapping.status]: config.statusIgnoredValue ?? "已忽略",
     },
   };
   printJson(runLarkJson(["base", "+record-batch-update", ...baseArgs(config), "--json", JSON.stringify(patch)]));
@@ -219,6 +258,9 @@ function asTaskStatus(value) {
   if (["done", "complete", "completed", "已完成", "完成"].some((item) => text.includes(item))) {
     return "done";
   }
+  if (["ignored", "ignore", "已忽略", "忽略", "归档"].some((item) => text.includes(item))) {
+    return "ignored";
+  }
   if (["waiting", "blocked", "等待", "阻塞"].some((item) => text.includes(item))) {
     return "waiting";
   }
@@ -294,7 +336,9 @@ function printUsageAndExit() {
   console.error(`Usage:
   npm run lark:fields -- [--config config/aime-base.example.json]
   npm run lark:pull -- [--config config/aime-base.example.json] [--out tmp/aime-tasks.json]
+  npm run lark:create -- --title "Task title" [--due-date "YYYY-MM-DD HH:mm:ss"] [--project "Project"]
   npm run lark:complete -- --record-id rec_xxx
+  npm run lark:ignore -- --record-id rec_xxx
   npm run lark:reschedule -- --record-id rec_xxx --due-date "YYYY-MM-DD HH:mm:ss"`);
   process.exit(1);
 }

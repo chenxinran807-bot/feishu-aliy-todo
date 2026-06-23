@@ -4,7 +4,9 @@
   "viewId": "vewBgeF8ZA",
   "identity": "user",
   "limit": 100,
+  "statusOpenValue": "未完成",
   "statusDoneValue": "已完成",
+  "statusIgnoredValue": "已忽略",
   "mapping": {
     "title": "任务名称",
     "status": "状态",

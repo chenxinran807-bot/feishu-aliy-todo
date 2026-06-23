@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Vision
 
 struct TaskFeed: Decodable {
     let tasks: [AimeTask]
@@ -17,6 +18,10 @@ struct AimeTask: Decodable {
 struct LocalPreferences: Codable {
     var pinnedTaskIds: Set<String> = []
     var hiddenTaskIds: Set<String> = []
+    var priorityByTaskId: [String: String] = [:]
+    var priorityFilter: String = "all"
+    var projectFilter: String = "all"
+    var statusFilter: String = "open"
 }
 
 final class AimeActionButton: NSButton {
@@ -25,7 +30,7 @@ final class AimeActionButton: NSButton {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let defaultBaseURL = "https://bytedance.larkoffice.com/base/F4k1bKUkRaIafPsKxP2cVAyEnwJ?table=tblllGcOFXODLI5I&view=vewBgeF8ZA"
-    private let defaultAimeAssistantURL = "lark://client"
+    private let defaultAimeAssistantURL = "lark://client/chat/open?openChatId=oc_31661171e477fd90c1d62de8e2f1a84d"
 
     private var window: NSWindow!
     private var statusItem: NSStatusItem!
@@ -95,25 +100,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             view.removeFromSuperview()
         }
 
-        let openTasks = tasks.filter { $0.status != "done" }
-        let visibleOpenTasks = openTasks.filter { task in
+        let actionableTasks = tasks.filter { isActionableStatus($0.status) }
+        let filteredTasks = applyFilters(tasks)
+        let visibleTasks = filteredTasks.filter { task in
             showingHiddenTasks || !preferences.hiddenTaskIds.contains(task.id)
         }
-        let overdueTasks = openTasks.filter { task in
+        let overdueTasks = actionableTasks.filter { task in
             guard let dueDate = task.dueDate else { return false }
             return dueDate < todayKey()
         }
-        let sortedOpenTasks = sortOpenTasks(visibleOpenTasks)
+        let sortedTasks = sortTasks(visibleTasks)
 
         if !isExpanded {
-            rootStack.addArrangedSubview(compactWidget(openCount: openTasks.count, overdueCount: overdueTasks.count))
+            rootStack.addArrangedSubview(compactWidget(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
             return
         }
 
-        rootStack.addArrangedSubview(headerRow(openCount: openTasks.count, overdueCount: overdueTasks.count))
+        rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
+        rootStack.addArrangedSubview(filterView(tasks: tasks))
         rootStack.addArrangedSubview(projectProgressView(tasks: tasks, projectName: "AI试穿"))
         rootStack.addArrangedSubview(projectProgressView(tasks: tasks, projectName: "AI穿搭"))
-        rootStack.addArrangedSubview(taskListView(sortedOpenTasks))
+        rootStack.addArrangedSubview(taskListView(sortedTasks))
         rootStack.addArrangedSubview(footerView(tasksCount: tasks.count, hiddenCount: preferences.hiddenTaskIds.count))
     }
 
@@ -151,12 +158,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return button
     }
 
-    private func sortOpenTasks(_ tasks: [AimeTask]) -> [AimeTask] {
+    private func applyFilters(_ tasks: [AimeTask]) -> [AimeTask] {
+        tasks.filter { task in
+            let priority = preferences.priorityByTaskId[task.id] ?? "P2"
+            let project = task.project ?? "未分类"
+            let statusMatches = preferences.statusFilter == "all"
+                || (preferences.statusFilter == "open" && isActionableStatus(task.status))
+                || task.status == preferences.statusFilter
+            let priorityMatches = preferences.priorityFilter == "all" || priority == preferences.priorityFilter
+            let projectMatches = preferences.projectFilter == "all" || project == preferences.projectFilter
+            return statusMatches && priorityMatches && projectMatches
+        }
+    }
+
+    private func isActionableStatus(_ status: String) -> Bool {
+        status != "done" && status != "ignored"
+    }
+
+    private func sortTasks(_ tasks: [AimeTask]) -> [AimeTask] {
         tasks.sorted { left, right in
             let leftPinned = preferences.pinnedTaskIds.contains(left.id)
             let rightPinned = preferences.pinnedTaskIds.contains(right.id)
             if leftPinned != rightPinned {
                 return leftPinned
+            }
+
+            let leftPriority = priorityRank(preferences.priorityByTaskId[left.id] ?? "P2")
+            let rightPriority = priorityRank(preferences.priorityByTaskId[right.id] ?? "P2")
+            if leftPriority != rightPriority {
+                return leftPriority < rightPriority
             }
 
             let leftDate = left.dueDate ?? "9999-12-31"
@@ -165,6 +195,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return left.title < right.title
             }
             return leftDate < rightDate
+        }
+    }
+
+    private func priorityRank(_ priority: String) -> Int {
+        switch priority {
+        case "P0": return 0
+        case "P1": return 1
+        default: return 2
         }
     }
 
@@ -197,6 +235,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         row.addArrangedSubview(titleStack)
         row.addArrangedSubview(collapse)
         return row
+    }
+
+    private func filterView(tasks: [AimeTask]) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+
+        row.addArrangedSubview(label("筛选", size: 11, weight: .medium, color: mutedColor()))
+        row.addArrangedSubview(popup(
+            items: [("全部优先级", "all"), ("P0", "P0"), ("P1", "P1"), ("P2", "P2")],
+            selected: preferences.priorityFilter,
+            action: #selector(priorityFilterChanged(_:))
+        ))
+
+        let projects = Array(Set(tasks.map { $0.project ?? "未分类" })).sorted()
+        let projectItems = [("全部分类", "all")] + projects.map { ($0, $0) }
+        row.addArrangedSubview(popup(
+            items: projectItems,
+            selected: preferences.projectFilter,
+            action: #selector(projectFilterChanged(_:))
+        ))
+
+        row.addArrangedSubview(popup(
+            items: [("未完成", "open"), ("已完成", "done"), ("已忽略", "ignored"), ("全部状态", "all")],
+            selected: preferences.statusFilter,
+            action: #selector(statusFilterChanged(_:))
+        ))
+
+        return row
+    }
+
+    private func popup(items: [(String, String)], selected: String, action: Selector) -> NSPopUpButton {
+        let popup = NSPopUpButton()
+        popup.controlSize = .small
+        popup.target = self
+        popup.action = action
+        items.forEach { title, value in
+            popup.addItem(withTitle: title)
+            popup.lastItem?.representedObject = value
+        }
+        if let index = items.firstIndex(where: { $0.1 == selected }) {
+            popup.selectItem(at: index)
+        }
+        return popup
     }
 
     private func taskListView(_ tasks: [AimeTask]) -> NSView {
@@ -250,32 +333,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stack.spacing = 5
         let isPinned = preferences.pinnedTaskIds.contains(task.id)
         let isHidden = preferences.hiddenTaskIds.contains(task.id)
+        let priority = preferences.priorityByTaskId[task.id] ?? "P2"
         let statePrefix = [
-            isPinned ? "置顶" : nil,
+            isPinned ? "★置顶" : nil,
+            priority,
             isHidden ? "隐藏" : nil,
         ].compactMap { $0 }.joined(separator: " · ")
         let title = statePrefix.isEmpty ? task.title : "\(statePrefix) · \(task.title)"
 
-        stack.addArrangedSubview(label(title, size: 13, weight: .semibold))
+        stack.addArrangedSubview(label(title, size: 13, weight: isPinned ? .bold : .semibold, color: titleColor(priority: priority, isPinned: isPinned)))
         stack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 11, color: mutedColor()))
         stack.addArrangedSubview(actionRow(for: task))
-        return card(stack, width: 388)
+        return card(stack, width: 388, priority: priority, isPinned: isPinned)
     }
 
     private func actionRow(for task: AimeTask) -> NSView {
-        let row = NSStackView()
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 8
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 5
+
+        let primaryRow = NSStackView()
+        primaryRow.orientation = .horizontal
+        primaryRow.alignment = .centerY
+        primaryRow.spacing = 8
+
+        let secondaryRow = NSStackView()
+        secondaryRow.orientation = .horizontal
+        secondaryRow.alignment = .centerY
+        secondaryRow.spacing = 8
 
         if let sourceUrl = task.sourceUrl, !sourceUrl.isEmpty {
-            row.addArrangedSubview(actionButton("打开", representedObject: sourceUrl, action: #selector(openTaskSource(_:))))
+            primaryRow.addArrangedSubview(actionButton("打开", representedObject: sourceUrl, action: #selector(openTaskSource(_:))))
         }
-        row.addArrangedSubview(actionButton("改时间", representedObject: task.id, action: #selector(rescheduleTask(_:))))
-        row.addArrangedSubview(actionButton(preferences.pinnedTaskIds.contains(task.id) ? "取消置顶" : "置顶", representedObject: task.id, action: #selector(togglePinTask(_:))))
-        row.addArrangedSubview(actionButton(preferences.hiddenTaskIds.contains(task.id) ? "取消隐藏" : "隐藏", representedObject: task.id, action: #selector(toggleHideTask(_:))))
-        row.addArrangedSubview(actionButton("完成", representedObject: task.id, action: #selector(completeTask(_:))))
-        return row
+        primaryRow.addArrangedSubview(actionButton("改时间", representedObject: task.id, action: #selector(rescheduleTask(_:))))
+        primaryRow.addArrangedSubview(actionButton("完成", representedObject: task.id, action: #selector(completeTask(_:))))
+
+        secondaryRow.addArrangedSubview(actionButton(preferences.pinnedTaskIds.contains(task.id) ? "取消置顶" : "置顶", representedObject: task.id, action: #selector(togglePinTask(_:))))
+        secondaryRow.addArrangedSubview(priorityMenu(for: task))
+        secondaryRow.addArrangedSubview(actionButton(preferences.hiddenTaskIds.contains(task.id) ? "取消隐藏" : "隐藏", representedObject: task.id, action: #selector(toggleHideTask(_:))))
+        secondaryRow.addArrangedSubview(actionButton("忽略", representedObject: task.id, action: #selector(ignoreTask(_:))))
+
+        stack.addArrangedSubview(primaryRow)
+        stack.addArrangedSubview(secondaryRow)
+        return stack
+    }
+
+    private func priorityMenu(for task: AimeTask) -> NSPopUpButton {
+        let menu = NSPopUpButton()
+        menu.controlSize = .small
+        menu.target = self
+        menu.action = #selector(priorityChanged(_:))
+        ["P0", "P1", "P2"].forEach { priority in
+            menu.addItem(withTitle: priority)
+            menu.lastItem?.representedObject = "\(task.id)|\(priority)"
+        }
+        let selectedPriority = preferences.priorityByTaskId[task.id] ?? "P2"
+        menu.selectItem(withTitle: selectedPriority)
+        return menu
     }
 
     private func actionButton(_ title: String, representedObject: String, action: Selector) -> NSButton {
@@ -314,10 +429,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func footerView(tasksCount: Int, hiddenCount: Int) -> NSView {
-        let row = NSStackView()
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 8
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+
+        let summaryRow = NSStackView()
+        summaryRow.orientation = .horizontal
+        summaryRow.alignment = .centerY
+        summaryRow.spacing = 8
+
+        let actionRow = NSStackView()
+        actionRow.orientation = .horizontal
+        actionRow.alignment = .centerY
+        actionRow.spacing = 8
+
+        let add = NSButton(title: "新增", target: self, action: #selector(addTaskClicked))
+        add.bezelStyle = .rounded
+        add.controlSize = .small
+
+        let screen = NSButton(title: "识别屏幕", target: self, action: #selector(captureScreenClicked))
+        screen.bezelStyle = .rounded
+        screen.controlSize = .small
 
         let base = NSButton(title: "多维表格", target: self, action: #selector(openAimeBase))
         base.bezelStyle = .rounded
@@ -336,20 +469,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hiddenToggle.controlSize = .small
         hiddenToggle.isEnabled = hiddenCount > 0
 
-        row.addArrangedSubview(label("\(tasksCount) tasks from Aime Base", size: 11, color: mutedColor()))
-        row.addArrangedSubview(label("\(hiddenCount) hidden", size: 11, color: mutedColor()))
-        row.addArrangedSubview(base)
-        row.addArrangedSubview(assistant)
-        row.addArrangedSubview(hiddenToggle)
-        row.addArrangedSubview(refresh)
-        return row
+        summaryRow.addArrangedSubview(label("\(tasksCount) tasks from Aime Base", size: 11, color: mutedColor()))
+        summaryRow.addArrangedSubview(label("\(hiddenCount) hidden", size: 11, color: mutedColor()))
+        actionRow.addArrangedSubview(add)
+        actionRow.addArrangedSubview(screen)
+        actionRow.addArrangedSubview(base)
+        actionRow.addArrangedSubview(assistant)
+        actionRow.addArrangedSubview(hiddenToggle)
+        actionRow.addArrangedSubview(refresh)
+
+        stack.addArrangedSubview(summaryRow)
+        stack.addArrangedSubview(actionRow)
+        return stack
     }
 
-    private func card(_ content: NSView, width: CGFloat = 388) -> NSView {
+    private func card(_ content: NSView, width: CGFloat = 388, priority: String = "P2", isPinned: Bool = false) -> NSView {
         let wrapper = NSView()
         wrapper.wantsLayer = true
-        wrapper.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.72).cgColor
+        wrapper.layer?.backgroundColor = cardColor(priority: priority, isPinned: isPinned).cgColor
         wrapper.layer?.cornerRadius = 8
+        wrapper.layer?.borderWidth = isPinned || priority == "P0" ? 2 : 0
+        wrapper.layer?.borderColor = borderColor(priority: priority, isPinned: isPinned).cgColor
         content.translatesAutoresizingMaskIntoConstraints = false
         wrapper.addSubview(content)
 
@@ -362,6 +502,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ])
 
         return wrapper
+    }
+
+    private func cardColor(priority: String, isPinned: Bool) -> NSColor {
+        if isPinned { return NSColor(calibratedRed: 1, green: 0.96, blue: 0.76, alpha: 0.92) }
+        if priority == "P0" { return NSColor(calibratedRed: 1, green: 0.88, blue: 0.86, alpha: 0.9) }
+        if priority == "P1" { return NSColor(calibratedRed: 0.9, green: 0.95, blue: 1, alpha: 0.85) }
+        return NSColor.white.withAlphaComponent(0.72)
+    }
+
+    private func borderColor(priority: String, isPinned: Bool) -> NSColor {
+        if isPinned { return NSColor(calibratedRed: 0.9, green: 0.62, blue: 0.05, alpha: 1) }
+        if priority == "P0" { return NSColor.systemRed }
+        return NSColor.clear
+    }
+
+    private func titleColor(priority: String, isPinned: Bool) -> NSColor {
+        if isPinned { return NSColor(calibratedRed: 0.38, green: 0.25, blue: 0.02, alpha: 1) }
+        if priority == "P0" { return NSColor.systemRed }
+        return NSColor.labelColor
     }
 
     private func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = NSColor.labelColor) -> NSTextField {
@@ -438,6 +597,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showWidget()
     }
 
+    @objc private func addTaskClicked() {
+        guard let draft = taskDraftDialog(title: "新增待办", initialText: "") else { return }
+        createTask(title: draft.title, dueDate: draft.dueDate, project: draft.project)
+    }
+
+    @objc private func captureScreenClicked() {
+        let screenshotURL = captureCurrentScreen()
+        guard let screenshotURL else {
+            showMessage("无法截取屏幕", detail: "请确认系统已允许屏幕录制权限。")
+            return
+        }
+
+        let recognizedText = recognizeText(in: screenshotURL)
+        guard let draft = taskDraftDialog(title: "从屏幕识别待办", initialText: recognizedText) else { return }
+        createTask(title: draft.title, dueDate: draft.dueDate, project: draft.project)
+    }
+
     @objc private func openAimeBase() {
         openURLString(ProcessInfo.processInfo.environment["AIME_BASE_URL"] ?? defaultBaseURL)
     }
@@ -488,9 +664,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reloadTasks()
     }
 
+    @objc private func priorityChanged(_ sender: NSPopUpButton) {
+        guard
+            let payload = sender.selectedItem?.representedObject as? String,
+            let separator = payload.firstIndex(of: "|")
+        else {
+            return
+        }
+        let recordId = String(payload[..<separator])
+        let priority = String(payload[payload.index(after: separator)...])
+        preferences.priorityByTaskId[recordId] = priority
+        savePreferences()
+        reloadTasks()
+    }
+
+    @objc private func priorityFilterChanged(_ sender: NSPopUpButton) {
+        preferences.priorityFilter = selectedPopupValue(sender)
+        savePreferences()
+        reloadTasks()
+    }
+
+    @objc private func projectFilterChanged(_ sender: NSPopUpButton) {
+        preferences.projectFilter = selectedPopupValue(sender)
+        savePreferences()
+        reloadTasks()
+    }
+
+    @objc private func statusFilterChanged(_ sender: NSPopUpButton) {
+        preferences.statusFilter = selectedPopupValue(sender)
+        savePreferences()
+        reloadTasks()
+    }
+
     @objc private func completeTask(_ sender: NSButton) {
         guard let recordId = (sender as? AimeActionButton)?.payload else { return }
         runSyncCommand(["complete", "--record-id", recordId])
+        pullLatestTasks()
+        reloadTasks()
+    }
+
+    @objc private func ignoreTask(_ sender: NSButton) {
+        guard let recordId = (sender as? AimeActionButton)?.payload else { return }
+        runSyncCommand(["ignore", "--record-id", recordId])
         pullLatestTasks()
         reloadTasks()
     }
@@ -520,6 +735,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         runSyncCommand(["pull", "--out", "tmp/aime-tasks.json"])
     }
 
+    private func createTask(title: String, dueDate: String?, project: String?) {
+        var arguments = ["create", "--title", title]
+        if let dueDate, !dueDate.isEmpty {
+            arguments += ["--due-date", dueDate]
+        }
+        if let project, !project.isEmpty {
+            arguments += ["--project", project]
+        }
+        runSyncCommand(arguments)
+        pullLatestTasks()
+        reloadTasks()
+    }
+
     private func runSyncCommand(_ arguments: [String]) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -537,6 +765,130 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             print("Aime sync command could not run: \(error.localizedDescription)")
         }
+    }
+
+    private func selectedPopupValue(_ sender: NSPopUpButton) -> String {
+        sender.selectedItem?.representedObject as? String ?? "all"
+    }
+
+    private struct TaskDraft {
+        let title: String
+        let dueDate: String?
+        let project: String?
+    }
+
+    private func taskDraftDialog(title: String, initialText: String) -> TaskDraft? {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+
+        let titleField = NSTextField(string: compactTaskTitle(initialText))
+        titleField.placeholderString = "待办标题"
+        titleField.translatesAutoresizingMaskIntoConstraints = false
+        titleField.widthAnchor.constraint(equalToConstant: 340).isActive = true
+
+        let duePicker = NSDatePicker()
+        duePicker.datePickerStyle = .textFieldAndStepper
+        duePicker.datePickerElements = [.yearMonthDay, .hourMinute]
+        duePicker.dateValue = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        duePicker.translatesAutoresizingMaskIntoConstraints = false
+        duePicker.widthAnchor.constraint(equalToConstant: 240).isActive = true
+
+        let projectField = NSTextField(string: "")
+        projectField.placeholderString = "分类，可留空"
+        projectField.translatesAutoresizingMaskIntoConstraints = false
+        projectField.widthAnchor.constraint(equalToConstant: 240).isActive = true
+
+        stack.addArrangedSubview(label("标题", size: 11, color: mutedColor()))
+        stack.addArrangedSubview(titleField)
+        stack.addArrangedSubview(label("截止时间", size: 11, color: mutedColor()))
+        stack.addArrangedSubview(duePicker)
+        stack.addArrangedSubview(label("分类", size: 11, color: mutedColor()))
+        stack.addArrangedSubview(projectField)
+
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = "保存后会写入飞书 Base。"
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "保存")
+        alert.addButton(withTitle: "取消")
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        let taskTitle = titleField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !taskTitle.isEmpty else { return nil }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return TaskDraft(
+            title: taskTitle,
+            dueDate: formatter.string(from: duePicker.dateValue),
+            project: projectField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    private func compactTaskTitle(_ text: String) -> String {
+        let collapsed = text
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .prefix(4)
+            .joined(separator: " / ")
+        return String(collapsed.prefix(160))
+    }
+
+    private func captureCurrentScreen() -> URL? {
+        let url = preferencesURL()
+            .deletingLastPathComponent()
+            .appendingPathComponent("screen-capture-\(Int(Date().timeIntervalSince1970)).png")
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", url.path]
+
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0 ? url : nil
+        } catch {
+            return nil
+        }
+    }
+
+    private func recognizeText(in imageURL: URL) -> String {
+        guard
+            let image = NSImage(contentsOf: imageURL),
+            let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else {
+            return ""
+        }
+
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.recognitionLanguages = ["zh-Hans", "en-US"]
+
+        do {
+            try VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([request])
+            let lines = (request.results ?? [])
+                .compactMap { $0.topCandidates(1).first?.string }
+                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            return lines.prefix(8).joined(separator: "\n")
+        } catch {
+            return ""
+        }
+    }
+
+    private func showMessage(_ title: String, detail: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = detail
+        alert.addButton(withTitle: "知道了")
+        alert.runModal()
     }
 
     private func preferencesURL() -> URL {
