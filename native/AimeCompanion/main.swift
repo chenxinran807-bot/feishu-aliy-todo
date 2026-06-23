@@ -302,7 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let popup = NSPopUpButton()
         popup.controlSize = .small
         popup.translatesAutoresizingMaskIntoConstraints = false
-        popup.widthAnchor.constraint(equalToConstant: 106).isActive = true
+        popup.widthAnchor.constraint(equalToConstant: filterWidth()).isActive = true
         popup.target = self
         popup.action = action
         items.forEach { title, value in
@@ -382,7 +382,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func contentWidth() -> CGFloat {
         guard isExpanded else { return 88 }
-        return max(318, window.frame.width - 62)
+        return max(220, window.frame.width - 62)
     }
 
     private func scrollWidth() -> CGFloat {
@@ -391,7 +391,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func scrollHeight() -> CGFloat {
         guard isExpanded else { return 0 }
-        return max(245, window.frame.height - 200)
+        return max(96, window.frame.height - 200)
+    }
+
+    private func filterWidth() -> CGFloat {
+        guard isExpanded else { return 96 }
+        return window.frame.width < 330 ? 74 : 106
     }
 
     private func actionRow(for task: AimeTask) -> NSView {
@@ -595,7 +600,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func updateWindowResizeBounds() {
         if isExpanded {
-            window.minSize = NSSize(width: 380, height: 440)
+            window.minSize = NSSize(width: 280, height: 280)
             window.maxSize = NSSize(width: 760, height: 900)
         } else {
             window.minSize = NSSize(width: 120, height: 104)
@@ -645,8 +650,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func resetExpandedPanelSize() {
-        preferences.expandedPanelWidth = 400
-        preferences.expandedPanelHeight = 560
+        preferences.expandedPanelWidth = 320
+        preferences.expandedPanelHeight = 420
         savePreferences()
         guard isExpanded else { return }
         window.setFrame(frameForCurrentMode(), display: true, animate: true)
@@ -1110,8 +1115,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func frameForCurrentMode() -> NSRect {
-        let expandedWidth = min(max(preferences.expandedPanelWidth, 380), 760)
-        let expandedHeight = min(max(preferences.expandedPanelHeight, 440), 900)
+        let expandedWidth = min(max(preferences.expandedPanelWidth, 280), 760)
+        let expandedHeight = min(max(preferences.expandedPanelHeight, 280), 900)
         let size = isExpanded ? NSSize(width: expandedWidth, height: expandedHeight) : NSSize(width: 120, height: 104)
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         return NSRect(
