@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import UserNotifications
 import Vision
 
 struct TaskFeed: Decodable {
@@ -135,7 +134,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         createStatusItem()
-        requestNotificationPermission()
         startAutoRefresh()
     }
 
@@ -770,19 +768,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func showStatusNotification(title: String, body: String) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        let request = UNNotificationRequest(
-            identifier: "aime-status-\(UUID().uuidString)",
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request)
-    }
-
-    private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        NSSound(named: NSSound.Name("Glass"))?.play()
+        if isExpanded {
+            showMessage(title, detail: body)
+        }
     }
 
     @objc private func addTaskClicked() {
