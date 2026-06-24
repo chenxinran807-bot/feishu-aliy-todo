@@ -61,7 +61,7 @@ final class ResizeHandleView: NSView {
     override var acceptsFirstResponder: Bool { true }
 
     override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .resizeUpDown)
+        addCursorRect(bounds, cursor: .resizeLeftRight)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -86,16 +86,13 @@ final class ResizeHandleView: NSView {
         let currentLocation = NSEvent.mouseLocation
         let deltaX = (currentLocation.x - initialMouseLocation.x) * 1.35
         let deltaY = (currentLocation.y - initialMouseLocation.y) * 1.35
-        let minSide = max(window.minSize.width, window.minSize.height)
-        let maxSide = min(window.maxSize.width, window.maxSize.height)
-        let proposedWidth = initialFrame.width + deltaX
-        let proposedHeight = initialFrame.height - deltaY
-        let side = min(max(max(proposedWidth, proposedHeight), minSide), maxSide)
+        let width = min(max(initialFrame.width + deltaX, window.minSize.width), window.maxSize.width)
+        let height = min(max(initialFrame.height - deltaY, window.minSize.height), window.maxSize.height)
         let frame = NSRect(
             x: initialFrame.minX,
-            y: initialFrame.maxY - side,
-            width: side,
-            height: side
+            y: initialFrame.maxY - height,
+            width: width,
+            height: height
         )
         window.setFrame(frame, display: true)
     }
@@ -125,6 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var lastKnownTaskCount = 0
     private var lastKnownOverdueCount = 0
     private var activeTaskGroup: NativeTaskGroup?
+    private var messageBanner: NSView?
+    private var messageDismissWorkItem: DispatchWorkItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -617,12 +616,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         row.addArrangedSubview(orb)
         row.addArrangedSubview(titleStack)
+        if preferences.displayStyle == "cute" {
+            row.addArrangedSubview(toolbarButton(title: "+", toolTip: "新增待办", action: #selector(addTaskClicked)))
+            row.addArrangedSubview(toolbarButton(title: "识别", toolTip: "从当前屏幕识别待办", action: #selector(captureScreenClicked)))
+        }
         if preferences.displayStyle != "cute" {
             let more = menuButton(title: "更多", action: #selector(showHeaderMoreMenu(_:)))
             row.addArrangedSubview(more)
         }
         row.addArrangedSubview(collapse)
         return row
+    }
+
+    private func toolbarButton(title: String, toolTip: String, action: Selector) -> NSButton {
+        let button = NSButton(title: title, target: self, action: action)
+        button.bezelStyle = .rounded
+        button.controlSize = usesCompactExpandedLayout() ? .mini : .small
+        button.toolTip = toolTip
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        return button
     }
 
     private func menuButton(title: String, action: Selector, payload: String = "") -> AimeMenuButton {
@@ -994,7 +1006,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         wrapper.wantsLayer = true
         wrapper.layer?.backgroundColor = cardColor(priority: priority, isPinned: isPinned).cgColor
         wrapper.layer?.cornerRadius = cardCornerRadius()
-        wrapper.layer?.borderWidth = isPinned || priority == "P0" ? 2 : 0
+        wrapper.layer?.borderWidth = preferences.displayStyle == "cute" ? 1 : (isPinned || priority == "P0" ? 2 : 0)
         wrapper.layer?.borderColor = borderColor(priority: priority, isPinned: isPinned).cgColor
         content.translatesAutoresizingMaskIntoConstraints = false
         wrapper.addSubview(content)
@@ -1028,8 +1040,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func cardColor(priority: String, isPinned: Bool) -> NSColor {
         if preferences.displayStyle == "cute" {
-            if isPinned { return NSColor(calibratedRed: 1, green: 0.92, blue: 0.70, alpha: 0.98) }
-            return NSColor(calibratedRed: 1, green: 0.97, blue: 0.90, alpha: 0.96)
+            if isPinned { return NSColor.controlAccentColor.withAlphaComponent(0.12) }
+            if priority == "P0" { return NSColor.systemRed.withAlphaComponent(0.08) }
+            return NSColor.windowBackgroundColor.withAlphaComponent(0.72)
         }
         if preferences.displayStyle == "minimal" {
             if isPinned { return NSColor.white.withAlphaComponent(0.9) }
@@ -1077,7 +1090,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func avatarColor() -> NSColor {
         switch preferences.displayStyle {
         case "minimal": return NSColor(calibratedWhite: 0.16, alpha: 1)
-        case "cute": return NSColor(calibratedRed: 1, green: 0.86, blue: 0.66, alpha: 1)
+        case "cute": return NSColor.controlAccentColor.withAlphaComponent(0.88)
         default: return NSColor(calibratedRed: 0.14, green: 0.36, blue: 0.32, alpha: 1)
         }
     }
@@ -1117,6 +1130,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func borderColor(priority: String, isPinned: Bool) -> NSColor {
+        if preferences.displayStyle == "cute" {
+            if isPinned { return NSColor.controlAccentColor.withAlphaComponent(0.35) }
+            if priority == "P0" { return NSColor.systemRed.withAlphaComponent(0.28) }
+            return NSColor.separatorColor.withAlphaComponent(0.5)
+        }
         if preferences.displayStyle == "minimal" {
             if isPinned { return NSColor.secondaryLabelColor }
             if priority == "P0" { return NSColor.systemRed.withAlphaComponent(0.7) }
@@ -1932,11 +1950,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func showMessage(_ title: String, detail: String) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = detail
-        alert.addButton(withTitle: "知道了")
-        alert.runModal()
+        showInlineMessage(title, detail: detail)
+    }
+
+    private func showInlineMessage(_ title: String, detail: String) {
+        guard let containerView else { return }
+
+        messageDismissWorkItem?.cancel()
+        messageBanner?.removeFromSuperview()
+
+        let banner = NSVisualEffectView()
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        banner.blendingMode = .withinWindow
+        banner.material = .popover
+        banner.state = .active
+        banner.wantsLayer = true
+        banner.layer?.cornerRadius = 14
+        banner.layer?.borderWidth = 1
+        banner.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.55).cgColor
+        banner.alphaValue = 0
+
+        let stack = NSStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 3
+        stack.addArrangedSubview(label(title, size: 13, weight: .semibold))
+        stack.addArrangedSubview(label(detail, size: 11, weight: .medium, color: mutedColor()))
+        banner.addSubview(stack)
+        containerView.addSubview(banner)
+
+        NSLayoutConstraint.activate([
+            banner.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
+            banner.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            banner.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
+            stack.leadingAnchor.constraint(equalTo: banner.leadingAnchor, constant: 12),
+            stack.trailingAnchor.constraint(equalTo: banner.trailingAnchor, constant: -12),
+            stack.topAnchor.constraint(equalTo: banner.topAnchor, constant: 9),
+            stack.bottomAnchor.constraint(equalTo: banner.bottomAnchor, constant: -9),
+        ])
+
+        messageBanner = banner
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            banner.animator().alphaValue = 1
+        }
+
+        let workItem = DispatchWorkItem { [weak self, weak banner] in
+            guard let self, let banner else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                banner.animator().alphaValue = 0
+            } completionHandler: {
+                banner.removeFromSuperview()
+                if self.messageBanner === banner {
+                    self.messageBanner = nil
+                }
+            }
+        }
+        messageDismissWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2, execute: workItem)
     }
 
     private func preferencesURL() -> URL {
