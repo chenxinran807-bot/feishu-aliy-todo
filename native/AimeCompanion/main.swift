@@ -840,12 +840,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         titleStack.orientation = .vertical
         titleStack.alignment = .leading
         titleStack.spacing = scaledCute(3)
+        titleStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let priority = preferences.priorityByTaskId[task.id] ?? "P2"
         titleStack.addArrangedSubview(label("\(priority) · \(task.title)", size: scaledCute(18), weight: .heavy))
         titleStack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: scaledCute(13), weight: .bold, color: mutedColor()))
 
+        let more = menuButton(title: "•••", action: #selector(showTaskMoreMenu(_:)), payload: task.id)
+        more.toolTip = "更多操作"
+        more.setContentHuggingPriority(.required, for: .horizontal)
+
         row.addArrangedSubview(check)
         row.addArrangedSubview(titleStack)
+        if let sourceUrl = task.sourceUrl, !sourceUrl.isEmpty {
+            let source = AimeActionButton(title: "↗", target: self, action: #selector(openTaskSource(_:)))
+            source.payload = sourceUrl
+            source.bezelStyle = .rounded
+            source.controlSize = .small
+            source.toolTip = "打开来源"
+            source.setContentHuggingPriority(.required, for: .horizontal)
+            row.addArrangedSubview(source)
+        }
+        row.addArrangedSubview(more)
         return card(row, width: contentWidth(), priority: priority, isPinned: preferences.pinnedTaskIds.contains(task.id))
     }
 
@@ -1291,6 +1306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             addPayloadMenuItem("标记 \(priority)", payload: "\(task.id)|\(priority)", to: menu, action: #selector(priorityChangedFromMenu(_:)))
         }
         menu.addItem(NSMenuItem.separator())
+        addPayloadMenuItem("改截止时间", payload: task.id, to: menu, action: #selector(rescheduleTaskFromMenu(_:)))
         addPayloadMenuItem(preferences.hiddenTaskIds.contains(task.id) ? "取消隐藏" : "隐藏", payload: task.id, to: menu, action: #selector(toggleHideTaskFromMenu(_:)))
         addPayloadMenuItem("忽略", payload: task.id, to: menu, action: #selector(ignoreTaskFromMenu(_:)))
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 2), in: sender)
@@ -1619,6 +1635,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func rescheduleTask(_ sender: NSButton) {
         guard let recordId = (sender as? AimeActionButton)?.payload else { return }
+        reschedule(recordId: recordId)
+    }
+
+    @objc private func rescheduleTaskFromMenu(_ sender: AimeMenuItem) {
+        reschedule(recordId: sender.payload)
+    }
+
+    private func reschedule(recordId: String) {
         guard let dueDate = chooseDueDate() else { return }
         runSyncCommand(["reschedule", "--record-id", recordId, "--due-date", dueDate])
         pullLatestTasks()
