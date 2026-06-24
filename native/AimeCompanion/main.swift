@@ -86,15 +86,16 @@ final class ResizeHandleView: NSView {
         let currentLocation = NSEvent.mouseLocation
         let deltaX = (currentLocation.x - initialMouseLocation.x) * 1.35
         let deltaY = (currentLocation.y - initialMouseLocation.y) * 1.35
-        let minSize = window.minSize
-        let maxSize = window.maxSize
-        let width = min(max(initialFrame.width + deltaX, minSize.width), maxSize.width)
-        let height = min(max(initialFrame.height - deltaY, minSize.height), maxSize.height)
+        let minSide = max(window.minSize.width, window.minSize.height)
+        let maxSide = min(window.maxSize.width, window.maxSize.height)
+        let proposedWidth = initialFrame.width + deltaX
+        let proposedHeight = initialFrame.height - deltaY
+        let side = min(max(max(proposedWidth, proposedHeight), minSide), maxSide)
         let frame = NSRect(
             x: initialFrame.minX,
-            y: initialFrame.maxY - height,
-            width: width,
-            height: height
+            y: initialFrame.maxY - side,
+            width: side,
+            height: side
         )
         window.setFrame(frame, display: true)
     }
@@ -388,6 +389,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         container.wantsLayer = true
         container.layer?.backgroundColor = styleStatusBackgroundColor().cgColor
         container.layer?.cornerRadius = preferences.displayStyle == "cute" ? scaledCute(20) : 7
+        if group == activeTaskGroup {
+            container.layer?.borderWidth = max(2, scaledCute(2))
+            container.layer?.borderColor = NSColor(calibratedRed: 0.72, green: 0.45, blue: 0.18, alpha: 0.9).cgColor
+        }
         container.translatesAutoresizingMaskIntoConstraints = false
         container.widthAnchor.constraint(equalToConstant: width).isActive = true
 
@@ -860,7 +865,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func cuteScale() -> CGFloat {
         guard preferences.displayStyle == "cute", isExpanded else { return 1 }
-        return min(1, max(0.72, window.frame.width / 760))
+        return min(1, max(0.42, window.frame.width / 760))
     }
 
     private func scaledCute(_ value: CGFloat) -> CGFloat {
@@ -1165,8 +1170,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func updateWindowResizeBounds() {
         if isExpanded {
-            window.minSize = NSSize(width: 300, height: 340)
-            window.maxSize = NSSize(width: 760, height: 860)
+            window.minSize = NSSize(width: 240, height: 240)
+            window.maxSize = NSSize(width: 640, height: 640)
         } else {
             window.minSize = NSSize(width: 120, height: 104)
             window.maxSize = NSSize(width: 120, height: 104)
@@ -1299,8 +1304,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func resetExpandedPanelSize() {
-        preferences.expandedPanelWidth = preferences.displayStyle == "cute" ? 560 : 320
-        preferences.expandedPanelHeight = preferences.displayStyle == "cute" ? 640 : 420
+        preferences.expandedPanelWidth = preferences.displayStyle == "cute" ? 320 : 320
+        preferences.expandedPanelHeight = preferences.displayStyle == "cute" ? 320 : 420
         savePreferences()
         guard isExpanded else { return }
         window.setFrame(frameForCurrentMode(), display: true, animate: true)
@@ -1309,7 +1314,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func showNativeTaskGroup(_ sender: AimeActionButton) {
         activeTaskGroup = NativeTaskGroup(rawValue: sender.payload)
-        reloadTasks(derivePetState: false)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.08
+            sender.animator().alphaValue = 0.55
+        } completionHandler: { [weak self, weak sender] in
+            guard let self else { return }
+            sender?.alphaValue = 1
+            self.reloadTasks(derivePetState: false)
+        }
     }
 
     private func scanScreenForTasks(dialogTitle: String, skipDuplicate: Bool) {
@@ -1959,9 +1971,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func frameForCurrentMode() -> NSRect {
-        let expandedWidth = min(max(preferences.expandedPanelWidth, 300), 760)
-        let expandedHeight = min(max(preferences.expandedPanelHeight, 340), 860)
-        let size = isExpanded ? NSSize(width: expandedWidth, height: expandedHeight) : NSSize(width: 120, height: 104)
+        let expandedSide = min(max(min(preferences.expandedPanelWidth, preferences.expandedPanelHeight), 240), 640)
+        let size = isExpanded ? NSSize(width: expandedSide, height: expandedSide) : NSSize(width: 120, height: 104)
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         return NSRect(
             x: visibleFrame.maxX - size.width - 32,
