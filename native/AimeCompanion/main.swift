@@ -222,11 +222,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
         if preferences.displayStyle == "cute" {
-            if !usesTinyExpandedLayout() {
+            if !usesCompactExpandedLayout() {
                 rootStack.addArrangedSubview(dogDenSummary(tasks: tasks))
             }
             rootStack.addArrangedSubview(webAlignedTaskListPreview(groupedTasks(from: visibleTasks)))
             rootStack.addArrangedSubview(resizeHandle())
+            fitCuteExpandedWindowToContent()
             return
         } else if let statusView = styleStatusView(openCount: actionableTasks.count, overdueCount: overdueTasks.count) {
             rootStack.addArrangedSubview(statusView)
@@ -597,7 +598,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         orb.heightAnchor.constraint(equalToConstant: avatarBoxSize).isActive = true
 
         let summaryText = preferences.displayStyle == "cute"
-            ? (usesTinyExpandedLayout() ? "\(openCount) 件待办" : "下一件最重要的事")
+            ? (usesCompactExpandedLayout() ? "\(openCount) 件待办" : "下一件最重要的事")
             : "\(openCount) open · \(overdueCount) overdue"
         let summarySize: CGFloat = preferences.displayStyle == "cute" ? scaledCute(24) : 17
         let summary = label(summaryText, size: summarySize, weight: .semibold)
@@ -606,13 +607,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         titleStack.spacing = preferences.displayStyle == "cute" ? scaledCute(4) : 5
         titleStack.addArrangedSubview(label(styleTitle(), size: preferences.displayStyle == "cute" ? scaledCute(18) : 12, weight: .bold, color: mutedColor()))
         titleStack.addArrangedSubview(summary)
-        if preferences.displayStyle == "cute", !usesTinyExpandedLayout() {
+        if preferences.displayStyle == "cute", !usesCompactExpandedLayout() {
             titleStack.addArrangedSubview(label("手动捕捉当前意图", size: scaledCute(14), weight: .bold, color: mutedColor()))
         }
 
-        let collapse = NSButton(title: usesTinyExpandedLayout() ? "×" : "收起", target: self, action: #selector(collapseWidget))
+        let collapse = NSButton(title: usesCompactExpandedLayout() ? "×" : "收起", target: self, action: #selector(collapseWidget))
         collapse.bezelStyle = .rounded
-        collapse.controlSize = usesTinyExpandedLayout() ? .mini : (preferences.displayStyle == "cute" ? .regular : .small)
+        collapse.controlSize = usesCompactExpandedLayout() ? .mini : (preferences.displayStyle == "cute" ? .regular : .small)
 
         row.addArrangedSubview(orb)
         row.addArrangedSubview(titleStack)
@@ -897,8 +898,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         preferences.displayStyle == "cute" ? value * cuteScale() : value
     }
 
-    private func usesTinyExpandedLayout() -> Bool {
-        preferences.displayStyle == "cute" && isExpanded && window.frame.width <= 220
+    private func usesCompactExpandedLayout() -> Bool {
+        preferences.displayStyle == "cute" && isExpanded && window.frame.width <= 460
+    }
+
+    private func fitCuteExpandedWindowToContent() {
+        guard preferences.displayStyle == "cute", isExpanded else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.containerView.layoutSubtreeIfNeeded()
+            let targetHeight = min(
+                self.window.maxSize.height,
+                max(self.window.minSize.height, ceil(self.rootStack.fittingSize.height + 26))
+            )
+            guard abs(self.window.frame.height - targetHeight) > 1 else { return }
+            var frame = self.window.frame
+            frame.origin.y = frame.maxY - targetHeight
+            frame.size.height = targetHeight
+            self.window.setFrame(frame, display: true, animate: false)
+            self.preferences.expandedPanelHeight = Double(targetHeight)
+            self.savePreferences()
+        }
     }
 
     private func scrollWidth() -> CGFloat {
@@ -1199,8 +1219,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func updateWindowResizeBounds() {
         if isExpanded {
-            window.minSize = NSSize(width: 160, height: 160)
-            window.maxSize = NSSize(width: 640, height: 640)
+            if preferences.displayStyle == "cute" {
+                window.minSize = NSSize(width: 320, height: 220)
+                window.maxSize = NSSize(width: 440, height: 520)
+            } else {
+                window.minSize = NSSize(width: 240, height: 240)
+                window.maxSize = NSSize(width: 640, height: 640)
+            }
         } else {
             window.minSize = NSSize(width: 120, height: 104)
             window.maxSize = NSSize(width: 120, height: 104)
@@ -1333,8 +1358,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func resetExpandedPanelSize() {
-        preferences.expandedPanelWidth = preferences.displayStyle == "cute" ? 160 : 320
-        preferences.expandedPanelHeight = preferences.displayStyle == "cute" ? 160 : 420
+        preferences.expandedPanelWidth = preferences.displayStyle == "cute" ? 420 : 320
+        preferences.expandedPanelHeight = preferences.displayStyle == "cute" ? 360 : 420
         savePreferences()
         guard isExpanded else { return }
         window.setFrame(frameForCurrentMode(), display: true, animate: true)
@@ -1940,10 +1965,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func migrateLegacyCutePanelSizeIfNeeded() {
         guard preferences.displayStyle == "cute" else { return }
-        let side = min(preferences.expandedPanelWidth, preferences.expandedPanelHeight)
-        guard side > 160 else { return }
-        preferences.expandedPanelWidth = 160
-        preferences.expandedPanelHeight = 160
+        let isOutsideCompactRange = preferences.expandedPanelWidth > 440
+            || preferences.expandedPanelHeight > 520
+            || preferences.expandedPanelWidth < 320
+            || preferences.expandedPanelHeight < 220
+        guard isOutsideCompactRange else { return }
+        preferences.expandedPanelWidth = 420
+        preferences.expandedPanelHeight = 360
         savePreferences()
     }
 
@@ -2009,8 +2037,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func frameForCurrentMode() -> NSRect {
-        let expandedSide = min(max(min(preferences.expandedPanelWidth, preferences.expandedPanelHeight), 160), 640)
-        let size = isExpanded ? NSSize(width: expandedSide, height: expandedSide) : NSSize(width: 120, height: 104)
+        let size: NSSize
+        if isExpanded, preferences.displayStyle == "cute" {
+            let width = min(max(preferences.expandedPanelWidth, 320), 440)
+            let height = min(max(preferences.expandedPanelHeight, 220), 520)
+            size = NSSize(width: width, height: height)
+        } else if isExpanded {
+            let expandedSide = min(max(min(preferences.expandedPanelWidth, preferences.expandedPanelHeight), 240), 640)
+            size = NSSize(width: expandedSide, height: expandedSide)
+        } else {
+            size = NSSize(width: 120, height: 104)
+        }
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         return NSRect(
             x: visibleFrame.maxX - size.width - 32,
