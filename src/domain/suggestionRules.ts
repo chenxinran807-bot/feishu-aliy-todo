@@ -36,14 +36,16 @@ export function generateSuggestions(input: GenerateSuggestionsInput): ProactiveS
   }
 
   const suggestions: ProactiveSuggestion[] = [];
+  const eventsById = new Map(events.map((event) => [event.id, event]));
 
   if (isTypeAllowed(settings, "create_task")) {
     for (const event of events) {
-      if (event.relatedTaskIds.length > 0 || !isMaterialTaskIntake(event.textContext)) {
+      const textContext = event.textContext ?? "";
+      if (event.relatedTaskIds.length > 0 || !isMaterialTaskIntake(textContext)) {
         continue;
       }
 
-      const drafts = extractTaskDraftsFromMaterial(event.textContext);
+      const drafts = extractTaskDraftsFromMaterial(textContext);
       drafts.forEach((draft, index) => {
         const id = `suggestion-${event.id}-${index}`;
         if (existingSuggestions.some((suggestion) => suggestion.id === id)) return;
@@ -75,6 +77,10 @@ export function generateSuggestions(input: GenerateSuggestionsInput): ProactiveS
   }
 
   for (const session of sessions) {
+    if (session.eventIds.some((eventId) => isMaterialTaskIntake(eventsById.get(eventId)?.textContext ?? ""))) {
+      continue;
+    }
+
     if (session.relatedTaskIds.length > 0 || hasExistingSuggestion(existingSuggestions, session)) {
       continue;
     }

@@ -96,6 +96,33 @@ describe("generateSuggestions", () => {
     ]);
     expect(suggestions.every((suggestion) => suggestion.suggestedAction.requiresConfirmation)).toBe(true);
   });
+
+  it("does not also suggest the whole material as one task", () => {
+    const materialEvent: IntentEvent = {
+      id: "evt-material",
+      triggerType: "manual_capture",
+      textContext: "会议纪要：1. 周三前整理竞品信息；2. 明天发评审材料给团队",
+      relatedTaskIds: [],
+      createdAt: "2026-06-24T09:00:00.000Z",
+      privacyLevel: "local_only",
+    };
+    const materialSession: WorkSession = {
+      ...session,
+      id: "session-material",
+      eventIds: ["evt-material"],
+      inferredTopic: materialEvent.textContext ?? "",
+    };
+
+    const suggestions = generateSuggestions({
+      events: [materialEvent],
+      sessions: [materialSession],
+      existingSuggestions: [],
+      settings: defaultIntentSettings,
+      now: "2026-06-24T09:00:00.000Z",
+    });
+
+    expect(suggestions.map((suggestion) => suggestion.body)).not.toContain(materialEvent.textContext);
+  });
 });
 
 describe("expireSuggestions", () => {

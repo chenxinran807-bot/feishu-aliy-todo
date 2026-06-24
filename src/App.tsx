@@ -9,6 +9,7 @@ import {
   getCompletedTasks,
   getOverdueTasks,
   getTodayTasks,
+  getVisibleOpenTasks,
   toDateKey,
 } from "./domain/taskFilters";
 import type { AppSnapshot, TaskViewModel } from "./domain/types";
@@ -54,7 +55,10 @@ export function App() {
     const now = new Date();
     const overdueTasks = getOverdueTasks(taskViewModels, now);
     const todayTasks = getTodayTasks(taskViewModels, now);
-    const laterTasks = getLaterThisWeekTasks(taskViewModels, now);
+    const scheduledTasks = [...overdueTasks, ...todayTasks, ...getLaterThisWeekTasks(taskViewModels, now)];
+    const scheduledTaskIds = new Set(scheduledTasks.map((task) => task.id));
+    const unscheduledTasks = getVisibleOpenTasks(taskViewModels).filter((task) => !scheduledTaskIds.has(task.id));
+    const laterTasks = [...getLaterThisWeekTasks(taskViewModels, now), ...unscheduledTasks];
     const completedTasks = getCompletedTasks(taskViewModels);
     const tracks = computeTracks(snapshot.tracks, snapshot.tasks).filter((track) => track.pinned);
     return { taskViewModels, overdueTasks, todayTasks, laterTasks, completedTasks, tracks };
@@ -144,7 +148,7 @@ export function App() {
   }
 
   function showTaskList() {
-    taskListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    taskListRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
     setTaskListHighlighted(true);
     window.setTimeout(() => setTaskListHighlighted(false), 900);
   }

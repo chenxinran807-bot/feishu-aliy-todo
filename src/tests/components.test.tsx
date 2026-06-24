@@ -314,7 +314,7 @@ describe("Aime companion redesign", () => {
     window.localStorage.setItem("aime-desktop-task-companion.snapshot", JSON.stringify(snapshot));
     window.history.pushState(null, "", "/?mode=peek");
 
-    render(<App />);
+    const fullView = render(<App />);
 
     fireEvent.click(await screen.findByLabelText("取消完成 已完成一"));
 
@@ -327,5 +327,34 @@ describe("Aime companion redesign", () => {
     });
     expect(await screen.findByLabelText("取消完成 已完成二")).toBeInTheDocument();
     expect(screen.getByLabelText("完成 已完成一")).toBeInTheDocument();
+  });
+
+  it("shows accepted Aime material tasks even when they have no due date", async () => {
+    window.localStorage.clear();
+    window.history.pushState(null, "", "/?mode=full");
+
+    const fullView = render(<App />);
+
+    fireEvent.change(await screen.findByLabelText("交给 Aime 处理"), {
+      target: { value: "会议纪要：1. 周五前整理渠道清单" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "生成待确认任务" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("本地历史：1 条意图事件，1 条建议。")).toBeInTheDocument();
+    });
+    fullView.unmount();
+
+    window.history.pushState(null, "", "/?mode=peek");
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "加入待办" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "展开全部待办，3 粒待领取狗粮" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "展开全部待办，3 粒待领取狗粮" }));
+
+    expect(await screen.findByText("周五前整理渠道清单")).toBeInTheDocument();
   });
 });

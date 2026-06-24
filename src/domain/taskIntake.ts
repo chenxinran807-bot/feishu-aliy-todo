@@ -11,7 +11,8 @@ export function extractTaskDraftsFromMaterial(material: string): TaskDraft[] {
 
   const direct = normalized.match(/(?:帮我新增任务|新增任务|创建任务)[:：]?\s*(.+)$/);
   if (direct?.[1]) {
-    return [{ title: cleanTitle(direct[1]), sourceType: "manual" }].filter((draft) => draft.title);
+    const draft: TaskDraft = { title: cleanTitle(direct[1]), sourceType: "manual" };
+    return draft.title ? [draft] : [];
   }
 
   const chunks = splitMaterial(normalized);
