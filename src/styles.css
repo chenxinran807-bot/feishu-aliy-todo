@@ -210,7 +210,7 @@ button {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 20px;
   margin-top: 30px;
 }
@@ -227,8 +227,11 @@ button {
 }
 
 .stats-card {
+  width: 100%;
+  border: 0;
   padding: 0;
   font: inherit;
+  text-align: center;
 }
 
 .stats-card--button {

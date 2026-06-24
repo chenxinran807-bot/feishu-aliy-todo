@@ -1,4 +1,5 @@
 import type { CaptureIntentEventInput, IntentSettings } from "../domain/intentTypes";
+import { toDateKey } from "../domain/taskFilters";
 import type { AppSnapshot, ComputedProgressTrack } from "../domain/types";
 import { DogPortrait } from "./DogPortrait";
 import { ManualCaptureForm } from "./ManualCaptureForm";
@@ -26,6 +27,11 @@ export function FullWindow({
   const openTasks = snapshot.tasks.filter((task) => task.status === "open");
   const primaryTask = openTasks[0];
   const rewardName = tracks[0]?.name ?? "遛狗 +1";
+  const today = toDateKey(new Date());
+  const p0Count = openTasks.filter((task) => task.title.includes("P0") || task.title.includes("p0"))
+    .length;
+  const overdueCount = openTasks.filter((task) => task.dueDate && task.dueDate < today).length;
+  const foodCount = openTasks.length;
 
   return (
     <main className="full-window">
@@ -45,18 +51,24 @@ export function FullWindow({
           {primaryTask?.project ?? "AI探索"} · 今天 18:00 · 完成后遛狗 +1
         </p>
         <div className="stats-grid">
-          <div>
-            <strong>{Math.max(1, openTasks.length)}</strong>
-            <span>P0</span>
-          </div>
-          <div>
-            <strong>2</strong>
-            <span>逾期</span>
-          </div>
-          <div>
-            <strong>3</strong>
-            <span>待领取狗粮</span>
-          </div>
+          {p0Count > 0 ? (
+            <div className="stats-card">
+              <strong>{p0Count}</strong>
+              <span>P0</span>
+            </div>
+          ) : null}
+          {overdueCount > 0 ? (
+            <div className="stats-card">
+              <strong>{overdueCount}</strong>
+              <span>逾期</span>
+            </div>
+          ) : null}
+          {foodCount > 0 ? (
+            <div className="stats-card">
+              <strong>{foodCount}</strong>
+              <span>待领取狗粮</span>
+            </div>
+          ) : null}
         </div>
         <div className="reward-callout">{rewardName}：完成一件后，小狗出门散步中。</div>
       </section>
@@ -67,7 +79,7 @@ export function FullWindow({
             <span className="task-row__check" aria-hidden="true" />
             <div>
               <h2>{index === 0 ? "AI 试穿 - 迭代评测方案" : task.title}</h2>
-              <p>{index === 0 ? "完成" : "改时间"}</p>
+              <p>{task.project ?? "AI探索"}</p>
             </div>
           </article>
         ))}

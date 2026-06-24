@@ -8,7 +8,7 @@ interface TaskRowProps {
   onHide: (taskId: string) => void;
 }
 
-export function TaskRow({ task, onComplete, onReopen, onTomorrow, onHide }: TaskRowProps) {
+export function TaskRow({ task, onComplete, onReopen, onHide }: TaskRowProps) {
   const isDone = task.status === "done";
   const isPrimary = !isDone && task.title.includes("试穿");
   const displayTitle = isPrimary ? "AI 试穿 - 迭代评测方案" : task.title;
@@ -36,15 +36,6 @@ export function TaskRow({ task, onComplete, onReopen, onTomorrow, onHide }: Task
       <div className="task-row__actions">
         {isDone ? (
           <span className="task-row__done-label">已完成</span>
-        ) : (
-          <button type="button" onClick={() => onComplete(task.id)}>
-            完成
-          </button>
-        )}
-        {!isDone && !isPrimary ? (
-          <button type="button" onClick={() => onTomorrow(task.id)}>
-            改时间
-          </button>
         ) : null}
         {!isDone ? (
           <button

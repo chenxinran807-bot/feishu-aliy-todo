@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CollapsedWidget } from "../components/CollapsedWidget";
+import { FullWindow } from "../components/FullWindow";
 import { PeekPanel } from "../components/PeekPanel";
 import { ProgressTrack } from "../components/ProgressTrack";
 import { App } from "../App";
@@ -121,8 +122,120 @@ describe("Aime companion redesign", () => {
     expect(screen.getByText("手动捕捉当前意图")).toBeInTheDocument();
     expect(screen.getByText(/完成后遛狗 \+1/)).toBeInTheDocument();
     expect(screen.getAllByText("P0・评审迭代方案")[0]).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "展开待办，3 粒待领取狗粮" }));
+    fireEvent.click(screen.getByRole("button", { name: "展开全部待办，1 粒待领取狗粮" }));
     expect(showTasks).toHaveBeenCalled();
+  });
+
+  it("lets each visible stat jump to its task group", () => {
+    const overdueTask: TaskViewModel = {
+      ...p0Task,
+      id: "overdue",
+      title: "逾期材料整理",
+      dueDate: "2026-06-23",
+      meta: { ...p0Task.meta, taskId: "overdue", displayPriority: 2 },
+    };
+    const laterTask: TaskViewModel = {
+      ...p0Task,
+      id: "later",
+      title: "普通待办",
+      dueDate: "2026-06-26",
+      meta: { ...p0Task.meta, taskId: "later", displayPriority: 0 },
+    };
+
+    render(
+      <PeekPanel
+        overdueTasks={[overdueTask]}
+        todayTasks={[p0Task]}
+        laterTasks={[laterTask]}
+        tracks={tracks}
+        onCollapse={() => undefined}
+        onComplete={() => undefined}
+        onTomorrow={() => undefined}
+        onHide={() => undefined}
+        onOpenFull={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "展开 P0 待办，1 件" }));
+    expect(screen.getByLabelText("待办事项")).toHaveTextContent("P0・评审迭代方案");
+    expect(screen.getByLabelText("待办事项")).not.toHaveTextContent("逾期材料整理");
+
+    fireEvent.click(screen.getByRole("button", { name: "展开逾期待办，1 件" }));
+    expect(screen.getByLabelText("待办事项")).toHaveTextContent("逾期材料整理");
+    expect(screen.getByLabelText("待办事项")).not.toHaveTextContent("普通待办");
+
+    fireEvent.click(screen.getByRole("button", { name: "展开全部待办，3 粒待领取狗粮" }));
+    expect(screen.getByLabelText("待办事项")).toHaveTextContent("普通待办");
+  });
+
+  it("hides empty P0 and overdue stat cards", () => {
+    const normalTask: TaskViewModel = {
+      ...p0Task,
+      id: "normal",
+      title: "普通待办",
+      meta: { ...p0Task.meta, taskId: "normal", displayPriority: 0 },
+    };
+
+    render(
+      <PeekPanel
+        overdueTasks={[]}
+        todayTasks={[normalTask]}
+        laterTasks={[]}
+        tracks={tracks}
+        onCollapse={() => undefined}
+        onComplete={() => undefined}
+        onTomorrow={() => undefined}
+        onHide={() => undefined}
+        onOpenFull={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText("P0")).not.toBeInTheDocument();
+    expect(screen.queryByText("逾期")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开全部待办，1 粒待领取狗粮" })).toBeInTheDocument();
+  });
+
+  it("uses the checkbox as the only task completion control", () => {
+    render(
+      <PeekPanel
+        overdueTasks={[p0Task]}
+        todayTasks={[]}
+        laterTasks={[]}
+        tracks={tracks}
+        onCollapse={() => undefined}
+        onComplete={() => undefined}
+        onTomorrow={() => undefined}
+        onHide={() => undefined}
+        onOpenFull={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText("完成 P0・评审迭代方案")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "完成" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "改时间" })).not.toBeInTheDocument();
+  });
+
+  it("does not show placeholder completion or reschedule actions in the full window", () => {
+    render(
+      <FullWindow
+        snapshot={{
+          syncState: "idle",
+          tasks: [p0Task],
+          localMeta: [],
+          tracks: [],
+          settings: {
+            widgetX: 0,
+            widgetY: 0,
+            miniMode: false,
+            reminderHour: 9,
+          },
+        }}
+        tracks={tracks}
+      />,
+    );
+
+    expect(screen.queryByText("完成")).not.toBeInTheDocument();
+    expect(screen.queryByText("改时间")).not.toBeInTheDocument();
   });
 
   it("keeps completed tasks checked and at the bottom", () => {

@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 import type { ProactiveSuggestion } from "../domain/intentTypes";
 import type { ComputedProgressTrack, TaskViewModel } from "../domain/types";
 import { DogPortrait } from "./DogPortrait";
@@ -26,6 +26,8 @@ interface PeekPanelProps {
   onNeverSuggestType?: (suggestionId: string) => void;
 }
 
+type TaskStatGroup = "p0" | "overdue" | "open";
+
 function uniqueTasks(tasks: TaskViewModel[]): TaskViewModel[] {
   const seen = new Set<string>();
   return tasks.filter((task) => {
@@ -33,6 +35,10 @@ function uniqueTasks(tasks: TaskViewModel[]): TaskViewModel[] {
     seen.add(task.id);
     return true;
   });
+}
+
+function isP0Task(task: TaskViewModel): boolean {
+  return task.title.includes("P0") || task.title.includes("p0");
 }
 
 export function PeekPanel({
@@ -55,7 +61,10 @@ export function PeekPanel({
   onDismissSuggestion = () => undefined,
   onNeverSuggestType = () => undefined,
 }: PeekPanelProps) {
+  const [activeStatGroup, setActiveStatGroup] = useState<TaskStatGroup | null>(null);
   const importantTask = overdueTasks[0] ?? todayTasks[0] ?? laterTasks[0];
+  const allOpenTasks = uniqueTasks([...overdueTasks, ...todayTasks, ...laterTasks]);
+  const p0Tasks = allOpenTasks.filter(isP0Task);
   const visibleTasks = uniqueTasks(
     [
       importantTask,
@@ -65,11 +74,24 @@ export function PeekPanel({
     ].filter((task): task is TaskViewModel => Boolean(task)),
   ).slice(0, 2);
   const bottomTasks = completedTasks.slice(0, 3);
-  const rowTasks = [...visibleTasks, ...bottomTasks];
+  const activeTasks =
+    activeStatGroup === "p0"
+      ? p0Tasks
+      : activeStatGroup === "overdue"
+        ? overdueTasks
+        : activeStatGroup === "open"
+          ? allOpenTasks
+          : visibleTasks;
+  const rowTasks = [...activeTasks, ...bottomTasks];
   const rewardName = tracks[0]?.name ?? "遛狗 +1";
-  const p0Count = overdueTasks.length || (importantTask ? 1 : 0);
-  const overdueCount = Math.max(2, overdueTasks.length);
-  const foodCount = Math.max(3, overdueTasks.length + todayTasks.length);
+  const p0Count = p0Tasks.length;
+  const overdueCount = overdueTasks.length;
+  const foodCount = allOpenTasks.length;
+
+  function showTaskGroup(group: TaskStatGroup) {
+    setActiveStatGroup(group);
+    onShowTasks?.();
+  }
 
   return (
     <main className="peek-panel">
@@ -89,23 +111,39 @@ export function PeekPanel({
           {importantTask?.project ?? "AI探索"} · 今天 18:00 · 完成后遛狗 +1
         </p>
         <div className="stats-grid" aria-label="任务概览">
-          <div>
-            <strong>{p0Count}</strong>
-            <span>P0</span>
-          </div>
-          <div>
-            <strong>{overdueCount}</strong>
-            <span>逾期</span>
-          </div>
-          <button
-            className="stats-card stats-card--button"
-            type="button"
-            onClick={onShowTasks}
-            aria-label={`展开待办，${foodCount} 粒待领取狗粮`}
-          >
-            <strong>{foodCount}</strong>
-            <span>待领取狗粮</span>
-          </button>
+          {p0Count > 0 ? (
+            <button
+              className="stats-card stats-card--button"
+              type="button"
+              onClick={() => showTaskGroup("p0")}
+              aria-label={`展开 P0 待办，${p0Count} 件`}
+            >
+              <strong>{p0Count}</strong>
+              <span>P0</span>
+            </button>
+          ) : null}
+          {overdueCount > 0 ? (
+            <button
+              className="stats-card stats-card--button"
+              type="button"
+              onClick={() => showTaskGroup("overdue")}
+              aria-label={`展开逾期待办，${overdueCount} 件`}
+            >
+              <strong>{overdueCount}</strong>
+              <span>逾期</span>
+            </button>
+          ) : null}
+          {foodCount > 0 ? (
+            <button
+              className="stats-card stats-card--button"
+              type="button"
+              onClick={() => showTaskGroup("open")}
+              aria-label={`展开全部待办，${foodCount} 粒待领取狗粮`}
+            >
+              <strong>{foodCount}</strong>
+              <span>待领取狗粮</span>
+            </button>
+          ) : null}
         </div>
         <div className="reward-callout">{rewardName}：完成一件后，小狗出门散步中。</div>
       </section>
