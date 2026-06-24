@@ -3,11 +3,12 @@ import type { TaskViewModel } from "../domain/types";
 interface TaskRowProps {
   task: TaskViewModel;
   onComplete: (taskId: string) => void;
+  onReopen: (taskId: string) => void;
   onTomorrow: (taskId: string) => void;
   onHide: (taskId: string) => void;
 }
 
-export function TaskRow({ task, onComplete, onTomorrow, onHide }: TaskRowProps) {
+export function TaskRow({ task, onComplete, onReopen, onTomorrow, onHide }: TaskRowProps) {
   const isDone = task.status === "done";
   const isPrimary = !isDone && (task.meta.displayPriority <= 1 || task.title.includes("试穿"));
   const displayTitle = isPrimary ? "AI 试穿 - 迭代评测方案" : task.title;
@@ -18,11 +19,14 @@ export function TaskRow({ task, onComplete, onTomorrow, onHide }: TaskRowProps) 
         className="task-row__check"
         type="button"
         onClick={() => {
-          if (!isDone) onComplete(task.id);
+          if (isDone) {
+            onReopen(task.id);
+          } else {
+            onComplete(task.id);
+          }
         }}
-        aria-label={isDone ? `已完成 ${displayTitle}` : `完成 ${displayTitle}`}
+        aria-label={isDone ? `取消完成 ${displayTitle}` : `完成 ${displayTitle}`}
         aria-pressed={isDone}
-        disabled={isDone}
       >
         {isDone ? "✓" : ""}
       </button>

@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { CollapsedWidget } from "../components/CollapsedWidget";
 import { PeekPanel } from "../components/PeekPanel";
 import { ProgressTrack } from "../components/ProgressTrack";
@@ -120,6 +120,8 @@ describe("Aime companion redesign", () => {
   });
 
   it("keeps completed tasks checked and at the bottom", () => {
+    const reopenTask = vi.fn();
+
     render(
       <PeekPanel
         overdueTasks={[p0Task]}
@@ -129,6 +131,7 @@ describe("Aime companion redesign", () => {
         tracks={tracks}
         onCollapse={() => undefined}
         onComplete={() => undefined}
+        onReopen={reopenTask}
         onTomorrow={() => undefined}
         onHide={() => undefined}
         onOpenFull={() => undefined}
@@ -137,6 +140,7 @@ describe("Aime companion redesign", () => {
 
     const rows = screen.getAllByRole("article");
     expect(rows[rows.length - 1]).toHaveTextContent("整理竞品信息");
-    expect(screen.getByLabelText("已完成 整理竞品信息")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("取消完成 整理竞品信息"));
+    expect(reopenTask).toHaveBeenCalledWith("done-task");
   });
 });

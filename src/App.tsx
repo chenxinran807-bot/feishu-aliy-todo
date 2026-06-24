@@ -76,6 +76,11 @@ export function App() {
     setSnapshot(await desktopApi.completeTask(taskId));
   }
 
+  async function reopenTask(taskId: string) {
+    if (!view) return;
+    setSnapshot(await desktopApi.reopenTask(taskId));
+  }
+
   async function moveToTomorrow(taskId: string) {
     if (!view) return;
     const task = view.taskViewModels.find((item) => item.id === taskId);
@@ -165,6 +170,7 @@ export function App() {
           setExpanded(false);
         }}
         onComplete={(taskId) => void completeTask(taskId)}
+        onReopen={(taskId) => void reopenTask(taskId)}
         onTomorrow={(taskId) => void moveToTomorrow(taskId)}
         onHide={(taskId) => void hideTask(taskId)}
         onOpenFull={() => void desktopApi.openFullWindow()}

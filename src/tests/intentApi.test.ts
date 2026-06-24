@@ -69,4 +69,14 @@ describe("intentApi", () => {
     expect(state.events).toHaveLength(0);
     expect(state.suggestions).toHaveLength(0);
   });
+
+  it("reopens a completed task", async () => {
+    const snapshot = await desktopApi.getSnapshot();
+    const completed = await desktopApi.completeTask(snapshot.tasks[0].id);
+    expect(completed.tasks[0].status).toBe("done");
+
+    const reopened = await desktopApi.reopenTask(snapshot.tasks[0].id);
+
+    expect(reopened.tasks[0].status).toBe("open");
+  });
 });

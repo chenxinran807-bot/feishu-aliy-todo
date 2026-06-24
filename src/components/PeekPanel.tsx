@@ -13,6 +13,7 @@ interface PeekPanelProps {
   suggestions?: ProactiveSuggestion[];
   onCollapse: () => void;
   onComplete: (taskId: string) => void;
+  onReopen?: (taskId: string) => void;
   onTomorrow: (taskId: string) => void;
   onHide: (taskId: string) => void;
   onOpenFull: () => void;
@@ -30,6 +31,7 @@ export function PeekPanel({
   suggestions = [],
   onCollapse,
   onComplete,
+  onReopen = () => undefined,
   onTomorrow,
   onHide,
   onOpenFull,
@@ -118,6 +120,7 @@ export function PeekPanel({
             key={`${task.id}-${index}`}
             task={task}
             onComplete={onComplete}
+            onReopen={onReopen}
             onTomorrow={onTomorrow}
             onHide={onHide}
           />

@@ -14,6 +14,7 @@ import { sampleSnapshot } from "../data/sampleData";
 interface AimeDesktopApi {
   getSnapshot: () => Promise<AppSnapshot>;
   completeTask: (taskId: string) => Promise<AppSnapshot>;
+  reopenTask: (taskId: string) => Promise<AppSnapshot>;
   rescheduleTask: (taskId: string, dueDate: string) => Promise<AppSnapshot>;
   hideTask: (taskId: string) => Promise<AppSnapshot>;
   syncNow: () => Promise<AppSnapshot>;
@@ -216,6 +217,15 @@ const webViewApi: AimeDesktopApi = {
       ...snapshot,
       tasks: snapshot.tasks.map((task) =>
         task.id === taskId ? { ...task, status: "done", updatedAt: new Date().toISOString() } : task,
+      ),
+    });
+  },
+  reopenTask: async (taskId) => {
+    const snapshot = await loadLocalSnapshot();
+    return saveLocalSnapshot({
+      ...snapshot,
+      tasks: snapshot.tasks.map((task) =>
+        task.id === taskId ? { ...task, status: "open", updatedAt: new Date().toISOString() } : task,
       ),
     });
   },
