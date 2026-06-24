@@ -225,9 +225,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if preferences.displayStyle == "cute" {
             rootStack.addArrangedSubview(syncStatusRow())
             rootStack.addArrangedSubview(nativeTaskFilterRow(tasks: visibleTasks))
-            if !usesCompactExpandedLayout() {
-                rootStack.addArrangedSubview(dogDenSummary(tasks: tasks))
-            }
             rootStack.addArrangedSubview(webAlignedTaskListPreview(groupedTasks(from: visibleTasks)))
             rootStack.addArrangedSubview(resizeHandle())
             fitCuteExpandedWindowToContent()
@@ -317,124 +314,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return overdueCount > 0 ? "\(overdueCount) 逾期" : "\(openCount) 待办"
     }
 
-    private func dogDenSummary(tasks: [AimeTask]) -> NSView {
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = scaledCute(18)
-
-        let nextTaskRow = NSStackView()
-        nextTaskRow.orientation = .vertical
-        nextTaskRow.alignment = .leading
-        nextTaskRow.spacing = scaledCute(7)
-        nextTaskRow.addArrangedSubview(label("下一件最重要的事", size: scaledCute(15), weight: .bold, color: mutedColor()))
-        nextTaskRow.addArrangedSubview(label(nextTaskTitle(from: tasks), size: scaledCute(24), weight: .heavy))
-        nextTaskRow.addArrangedSubview(label(nextTaskMeta(from: tasks), size: scaledCute(15), weight: .bold, color: mutedColor()))
-
-        let metrics = NSStackView()
-        metrics.orientation = .horizontal
-        metrics.alignment = .centerY
-        metrics.spacing = scaledCute(14)
-        let metricItems = webVisibleMetrics()
-        metricItems.forEach { item in
-            metrics.addArrangedSubview(metricPill(
-                title: item.title,
-                value: item.value,
-                columns: max(metricItems.count, 1),
-                group: item.group
-            ))
-        }
-
-        stack.addArrangedSubview(nextTaskRow)
-        if !metricItems.isEmpty {
-            stack.addArrangedSubview(metrics)
-        }
-        return card(stack, width: contentWidth())
-    }
-
-    private func webVisibleMetrics() -> [(title: String, value: String, group: NativeTaskGroup)] {
-        var items: [(String, String, NativeTaskGroup)] = []
-        if petState.p0Count > 0 {
-            items.append(("P0", "\(petState.p0Count)", .p0))
-        }
-        if petState.overdueCount > 0 {
-            items.append(("逾期", "\(petState.overdueCount)", .overdue))
-        }
-        items.append(("待办", "\(petState.pendingKibbleCount)", .open))
-        return items
-    }
-
-    private func metricRow(_ items: [(String, String)]) -> NSView {
-        let row = NSStackView()
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 6
-        items.forEach { title, value in
-            row.addArrangedSubview(metricPill(title: title, value: value))
-        }
-        return row
-    }
-
-    private func metricPill(title: String, value: String, columns: Int = 2, group: NativeTaskGroup? = nil) -> NSView {
-        let innerWidth = contentWidth() - scaledCute(40)
-        let totalGap = CGFloat(max(0, columns - 1)) * scaledCute(14)
-        let minimumWidth: CGFloat = columns >= 3 ? scaledCute(80) : scaledCute(120)
-        let width = columns <= 1 ? innerWidth : max(minimumWidth, (innerWidth - totalGap) / CGFloat(columns))
-        let container: NSView
-        if let group {
-            let button = AimeActionButton(title: "", target: self, action: #selector(showNativeTaskGroup(_:)))
-            button.payload = group.rawValue
-            button.isBordered = false
-            container = button
-        } else {
-            container = NSView()
-        }
-        container.wantsLayer = true
-        container.layer?.backgroundColor = styleStatusBackgroundColor().cgColor
-        container.layer?.cornerRadius = preferences.displayStyle == "cute" ? scaledCute(20) : 7
-        if group == activeTaskGroup {
-            container.layer?.borderWidth = max(2, scaledCute(2))
-            container.layer?.borderColor = NSColor(calibratedRed: 0.72, green: 0.45, blue: 0.18, alpha: 0.9).cgColor
-        }
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.widthAnchor.constraint(equalToConstant: width).isActive = true
-
-        let titleLabel = label(title, size: columns >= 3 ? scaledCute(12) : scaledCute(13), weight: .bold, color: mutedColor())
-        let valueLabel = label(value, size: scaledCute(23), weight: .heavy, color: NSColor.labelColor)
-        titleLabel.maximumNumberOfLines = 1
-        valueLabel.maximumNumberOfLines = 1
-        titleLabel.lineBreakMode = .byTruncatingTail
-        valueLabel.lineBreakMode = .byTruncatingTail
-
-        let textStack = NSStackView()
-        textStack.orientation = .vertical
-        textStack.alignment = .centerX
-        textStack.spacing = 1
-        textStack.translatesAutoresizingMaskIntoConstraints = false
-        textStack.addArrangedSubview(titleLabel)
-        textStack.addArrangedSubview(valueLabel)
-        container.addSubview(textStack)
-
-        NSLayoutConstraint.activate([
-            textStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: scaledCute(12)),
-            textStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -scaledCute(12)),
-            textStack.topAnchor.constraint(equalTo: container.topAnchor, constant: scaledCute(10)),
-            textStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -scaledCute(10)),
-        ])
-        return container
-    }
-
-    private func webRewardCallout(_ text: String) -> NSView {
-        let callout = label(text, size: scaledCute(15), weight: .bold, color: NSColor(calibratedRed: 0.45, green: 0.35, blue: 0.27, alpha: 1))
-        callout.maximumNumberOfLines = 2
-        callout.wantsLayer = true
-        callout.layer?.backgroundColor = NSColor(calibratedRed: 1, green: 0.96, blue: 0.88, alpha: 0.96).cgColor
-        callout.layer?.cornerRadius = scaledCute(20)
-        callout.layer?.borderWidth = 1.5
-        callout.layer?.borderColor = NSColor(calibratedRed: 0.9, green: 0.78, blue: 0.67, alpha: 1).cgColor
-        return padded(callout, width: contentWidth() - scaledCute(20), vertical: scaledCute(12))
-    }
-
     private func dogFace() -> String {
         switch petState.dogMood {
         case .concerned:
@@ -474,27 +353,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             return "今天从一件小事开始"
         }
-    }
-
-    private func nextTaskTitle(from tasks: [AimeTask]) -> String {
-        guard
-            let nextTaskId = petState.nextTaskId,
-            let nextTask = tasks.first(where: { $0.id == nextTaskId })
-        else {
-            return "当前没有紧急待办"
-        }
-        let priority = preferences.priorityByTaskId[nextTask.id] ?? "P2"
-        return "\(priority) · \(nextTask.title)"
-    }
-
-    private func nextTaskMeta(from tasks: [AimeTask]) -> String {
-        guard
-            let nextTaskId = petState.nextTaskId,
-            let nextTask = tasks.first(where: { $0.id == nextTaskId })
-        else {
-            return "新增或识别任务后会显示在这里"
-        }
-        return "\(nextTask.project ?? "未分类") · \(nextTask.dueDate ?? "无截止日期")"
     }
 
     private func styleStatusView(openCount: Int, overdueCount: Int) -> NSView? {
@@ -601,7 +459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         orb.heightAnchor.constraint(equalToConstant: avatarBoxSize).isActive = true
 
         let summaryText = preferences.displayStyle == "cute"
-            ? (usesCompactExpandedLayout() ? "\(openCount) 件待办" : "下一件最重要的事")
+            ? "\(openCount) 件待办"
             : "\(openCount) open · \(overdueCount) overdue"
         let summarySize: CGFloat = preferences.displayStyle == "cute" ? scaledCute(24) : 17
         let summary = label(summaryText, size: summarySize, weight: .semibold)
@@ -610,11 +468,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         titleStack.spacing = preferences.displayStyle == "cute" ? scaledCute(4) : 5
         titleStack.addArrangedSubview(label(styleTitle(), size: preferences.displayStyle == "cute" ? scaledCute(18) : 12, weight: .bold, color: mutedColor()))
         titleStack.addArrangedSubview(summary)
-        if preferences.displayStyle == "cute", !usesCompactExpandedLayout() {
-            titleStack.addArrangedSubview(label("手动捕捉当前意图", size: scaledCute(14), weight: .bold, color: mutedColor()))
-        }
-
-        let collapse = NSButton(title: usesCompactExpandedLayout() ? "×" : "收起", target: self, action: #selector(collapseWidget))
+        let collapse = NSButton(title: preferences.displayStyle == "cute" ? "×" : "收起", target: self, action: #selector(collapseWidget))
         collapse.bezelStyle = .rounded
         collapse.controlSize = usesCompactExpandedLayout() ? .mini : (preferences.displayStyle == "cute" ? .regular : .small)
 
@@ -811,30 +665,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return scrollView
     }
 
-    private func dogTaskPreview(_ tasks: [AimeTask]) -> NSView {
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-
-        stack.addArrangedSubview(label("待办", size: 12, weight: .medium, color: mutedColor()))
-
-        let previewTasks = Array(tasks.prefix(2))
-        if previewTasks.isEmpty {
-            stack.addArrangedSubview(card(label("当前没有待办", size: 13, weight: .semibold), width: contentWidth()))
-            return stack
-        }
-
-        previewTasks.forEach { task in
-            stack.addArrangedSubview(dogPreviewRow(task))
-        }
-
-        if tasks.count > previewTasks.count {
-            stack.addArrangedSubview(label("还有 \(tasks.count - previewTasks.count) 件", size: 11, weight: .medium, color: mutedColor()))
-        }
-        return stack
-    }
-
     private func webAlignedTaskListPreview(_ tasks: [AimeTask]) -> NSView {
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -949,32 +779,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             source.setContentHuggingPriority(.required, for: .horizontal)
             row.addArrangedSubview(source)
         }
-        row.addArrangedSubview(more)
-        return card(row, width: contentWidth(), priority: priority, isPinned: preferences.pinnedTaskIds.contains(task.id))
-    }
-
-    private func dogPreviewRow(_ task: AimeTask) -> NSView {
-        let row = NSStackView()
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 10
-
-        let check = actionButton("完成", representedObject: task.id, action: #selector(completeTask(_:)))
-        check.bezelStyle = .rounded
-        check.widthAnchor.constraint(equalToConstant: 54).isActive = true
-
-        let titleStack = NSStackView()
-        titleStack.orientation = .vertical
-        titleStack.alignment = .leading
-        titleStack.spacing = 2
-        let priority = preferences.priorityByTaskId[task.id] ?? "P2"
-        titleStack.addArrangedSubview(label("\(priority) · \(task.title)", size: 13, weight: .bold))
-        titleStack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 11, weight: .medium, color: mutedColor()))
-
-        let more = menuButton(title: "更多", action: #selector(showTaskMoreMenu(_:)), payload: task.id)
-
-        row.addArrangedSubview(check)
-        row.addArrangedSubview(titleStack)
         row.addArrangedSubview(more)
         return card(row, width: contentWidth(), priority: priority, isPinned: preferences.pinnedTaskIds.contains(task.id))
     }
