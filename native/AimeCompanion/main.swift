@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var lastSyncSucceeded = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        NSApp.setActivationPolicy(.accessory)
         taskFeedPath = resolveTaskFeedPath()
         preferences = loadPreferences()
         migrateLegacyCutePanelSizeIfNeeded()
@@ -1104,10 +1104,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func createStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "Ai"
+        statusItem.button?.title = "Aime"
+        statusItem.button?.toolTip = "Aime 待办伴随"
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "显示任务伴随", action: #selector(showWidget), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "展开任务列表", action: #selector(expandWidget), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "显示面板", action: #selector(showWidget), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "展开待办", action: #selector(expandWidget), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "重置位置并显示", action: #selector(resetWindowPositionAndShow), keyEquivalent: "0"))
         menu.addItem(NSMenuItem(title: "打开多维表格", action: #selector(openAimeBase), keyEquivalent: "b"))
         menu.addItem(NSMenuItem(title: "打开 Aime 助手", action: #selector(openAimeAssistant), keyEquivalent: "a"))

@@ -61,6 +61,8 @@ await writeFile(
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
   <string>15.0</string>
+  <key>LSUIElement</key>
+  <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSHumanReadableCopyright</key>
