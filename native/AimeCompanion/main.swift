@@ -133,17 +133,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         preferences = loadPreferences()
         migrateLegacyCutePanelSizeIfNeeded()
         petState = loadPetState()
+        isExpanded = true
 
         let frame = frameForCurrentMode()
         window = NSWindow(
             contentRect: frame,
-            styleMask: [.borderless, .resizable],
+            styleMask: [.titled, .fullSizeContentView, .resizable],
             backing: .buffered,
             defer: false
         )
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = true
+        window.sharingType = .readOnly
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         window.isMovableByWindowBackground = true
@@ -152,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.contentView = buildContentView(frame: frame)
 
         updateWindowResizeBounds()
+        pullLatestTasks()
         reloadTasks()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -161,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func buildContentView(frame: NSRect) -> NSView {
         let container = NSVisualEffectView(frame: NSRect(origin: .zero, size: frame.size))
-        container.blendingMode = .behindWindow
+        container.blendingMode = .withinWindow
         container.state = .active
         container.wantsLayer = true
         container.layer?.masksToBounds = true
@@ -190,6 +195,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let containerView else { return }
         containerView.material = windowMaterial()
         containerView.layer?.cornerRadius = panelCornerRadius()
+        containerView.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.78).cgColor
+        containerView.layer?.borderWidth = 1
+        containerView.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.45).cgColor
     }
 
     private func reloadTasks(derivePetState: Bool = true) {
@@ -981,8 +989,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func windowMaterial() -> NSVisualEffectView.Material {
         switch preferences.displayStyle {
-        case "minimal": return .underWindowBackground
-        case "cute": return .underWindowBackground
+        case "minimal": return .popover
+        case "cute": return .popover
         default: return .hudWindow
         }
     }
@@ -1100,6 +1108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "显示任务伴随", action: #selector(showWidget), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "展开任务列表", action: #selector(expandWidget), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "重置位置并显示", action: #selector(resetWindowPositionAndShow), keyEquivalent: "0"))
         menu.addItem(NSMenuItem(title: "打开多维表格", action: #selector(openAimeBase), keyEquivalent: "b"))
         menu.addItem(NSMenuItem(title: "打开 Aime 助手", action: #selector(openAimeAssistant), keyEquivalent: "a"))
         menu.addItem(NSMenuItem(title: "刷新", action: #selector(refreshClicked), keyEquivalent: "r"))
@@ -1110,7 +1119,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showWidget() {
         window.setFrame(frameForCurrentMode(), display: true, animate: true)
         window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func resetWindowPositionAndShow() {
+        isExpanded = true
+        preferences.expandedPanelWidth = preferences.displayStyle == "cute" ? 420 : 320
+        preferences.expandedPanelHeight = preferences.displayStyle == "cute" ? 360 : 420
+        savePreferences()
+        updateWindowResizeBounds()
+        reloadTasks()
+        showWidget()
     }
 
     @objc private func expandWidget() {
