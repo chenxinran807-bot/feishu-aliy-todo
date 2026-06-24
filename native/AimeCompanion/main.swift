@@ -305,7 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if petState.overdueCount > 0 {
                 return "逾期 · \(petState.overdueCount)"
             }
-            return "狗粮 · \(petState.pendingKibbleCount)"
+            return "待办 · \(petState.pendingKibbleCount)"
         }
         return overdueCount > 0 ? "\(overdueCount) 逾期" : "\(openCount) 待办"
     }
@@ -342,8 +342,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if !metricItems.isEmpty {
             stack.addArrangedSubview(metrics)
         }
-        stack.addArrangedSubview(webRewardCallout(dogStateLine()))
-
         return card(stack, width: contentWidth())
     }
 
@@ -355,9 +353,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if petState.overdueCount > 0 {
             items.append(("逾期", "\(petState.overdueCount)", .overdue))
         }
-        if petState.pendingKibbleCount > 0 {
-            items.append(("待领取狗粮", "\(petState.pendingKibbleCount)", .open))
-        }
+        items.append(("待办", "\(petState.pendingKibbleCount)", .open))
         return items
     }
 
@@ -450,24 +446,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func dogStateLine() -> String {
         switch petState.dogMood {
         case .walking:
-            return "遛狗 +1，小狗出门散步中"
+            return "已完成 1 件，正在同步状态"
         case .happyReturn:
-            return "散步回来啦，今天已遛狗 \(petState.fedTodayCount) 次"
+            return "今天已完成 \(petState.fedTodayCount) 件"
         case .concerned:
             if petState.p0Count > 0 {
-                return "小狗叼着牵引绳：还有 \(petState.p0Count) 件 P0 在等你"
+                return "还有 \(petState.p0Count) 件 P0 待处理"
             }
             if petState.overdueCount > 0 {
-                return "小狗坐在门口：有 \(petState.overdueCount) 件事过期了"
+                return "有 \(petState.overdueCount) 件事已逾期"
             }
-            return "小狗坐在门口，提醒你先看风险任务"
+            return "建议先处理风险任务"
         case .foundTask, .readyToWalk:
-            return "\(petState.pendingKibbleCount) 粒狗粮在碗边，完成后再喂"
+            return "\(petState.pendingKibbleCount) 件待办待处理"
         case .sniffing:
-            return "小狗正在嗅闻新线索"
+            return "正在识别屏幕里的待办线索"
         case .idle:
             if petState.fedTodayCount > 0 {
-                return "今天已遛狗 \(petState.fedTodayCount) 次"
+                return "今天已完成 \(petState.fedTodayCount) 件"
             }
             return "今天从一件小事开始"
         }
@@ -489,9 +485,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let nextTaskId = petState.nextTaskId,
             let nextTask = tasks.first(where: { $0.id == nextTaskId })
         else {
-            return "完成一件后遛狗 +1"
+            return "新增或识别任务后会显示在这里"
         }
-        return "\(nextTask.project ?? "未分类") · \(nextTask.dueDate ?? "无截止日期") · 完成后遛狗 +1"
+        return "\(nextTask.project ?? "未分类") · \(nextTask.dueDate ?? "无截止日期")"
     }
 
     private func styleStatusView(openCount: Int, overdueCount: Int) -> NSView? {
@@ -500,8 +496,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let text: String
         if preferences.displayStyle == "cute" {
             text = overdueCount > 0
-                ? "Aime 正在轻轻提醒你：有 \(overdueCount) 件快来处理"
-                : "Aime 陪你盯着 \(openCount) 件事，慢慢来"
+                ? "有 \(overdueCount) 件逾期待办"
+                : "当前有 \(openCount) 件待办"
         } else {
             text = overdueCount > 0
                 ? "Focus: \(overdueCount) overdue needs attention"
@@ -740,7 +736,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let previewTasks = Array(tasks.prefix(2))
         if previewTasks.isEmpty {
-            stack.addArrangedSubview(card(label("当前没有待办，带小狗休息一下", size: 13, weight: .semibold), width: contentWidth()))
+            stack.addArrangedSubview(card(label("当前没有待办", size: 13, weight: .semibold), width: contentWidth()))
             return stack
         }
 
@@ -749,7 +745,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         if tasks.count > previewTasks.count {
-            stack.addArrangedSubview(label("还有 \(tasks.count - previewTasks.count) 件，保持轻量预览", size: 11, weight: .medium, color: mutedColor()))
+            stack.addArrangedSubview(label("还有 \(tasks.count - previewTasks.count) 件", size: 11, weight: .medium, color: mutedColor()))
         }
         return stack
     }
@@ -763,20 +759,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         stack.addArrangedSubview(label("待办事项", size: scaledCute(18), weight: .bold, color: mutedColor()))
 
         let openTasks = tasks.filter { isActionableStatus($0.status) }
-        let previewTasks = Array(openTasks.prefix(3))
-        if previewTasks.isEmpty {
+        if openTasks.isEmpty {
             stack.addArrangedSubview(card(label("今天已经清空", size: scaledCute(16), weight: .bold), width: contentWidth()))
             return stack
         }
 
-        previewTasks.forEach { task in
-            stack.addArrangedSubview(webAlignedTaskRow(task))
+        let scrollView = NSScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = openTasks.count > 3
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.scrollerStyle = .overlay
+
+        let taskStack = NSStackView()
+        taskStack.translatesAutoresizingMaskIntoConstraints = false
+        taskStack.orientation = .vertical
+        taskStack.alignment = .leading
+        taskStack.spacing = scaledCute(10)
+        openTasks.forEach { task in
+            taskStack.addArrangedSubview(webAlignedTaskRow(task))
         }
 
-        if openTasks.count > previewTasks.count {
-            stack.addArrangedSubview(label("还有 \(openTasks.count - previewTasks.count) 件，保持轻量预览", size: scaledCute(14), weight: .bold, color: mutedColor()))
-        }
+        scrollView.documentView = taskStack
+        NSLayoutConstraint.activate([
+            scrollView.widthAnchor.constraint(equalToConstant: contentWidth()),
+            scrollView.heightAnchor.constraint(equalToConstant: visibleTaskListHeight(for: openTasks.count)),
+            taskStack.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+        ])
+
+        stack.addArrangedSubview(scrollView)
+        stack.addArrangedSubview(label("共 \(openTasks.count) 件，可上下滑动", size: scaledCute(12), weight: .semibold, color: mutedColor()))
         return stack
+    }
+
+    private func visibleTaskListHeight(for count: Int) -> CGFloat {
+        let visibleRows = CGFloat(min(max(count, 1), 3))
+        let rowHeight = scaledCute(64)
+        let gapHeight = CGFloat(max(0, Int(visibleRows) - 1)) * scaledCute(10)
+        return visibleRows * rowHeight + gapHeight + scaledCute(2)
     }
 
     private func webAlignedTaskRow(_ task: AimeTask) -> NSView {
@@ -1048,7 +1070,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func styleTitle() -> String {
         switch preferences.displayStyle {
         case "minimal": return "Aime"
-        case "cute": return "Aime 小狗"
+        case "cute": return "Aime 待办"
         default: return "任务伴随"
         }
     }
@@ -1243,14 +1265,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if lastKnownTaskCount > previousTaskCount {
             let deltaTasks = lastKnownTaskCount - previousTaskCount
             showStatusNotification(
-                title: preferences.displayStyle == "cute" ? "小狗闻到新待办" : "Aime 有新待办",
+                title: preferences.displayStyle == "cute" ? "有新待办" : "Aime 有新待办",
                 body: preferences.displayStyle == "cute"
-                    ? "有 \(deltaTasks) 个新待办，狗粮先放在碗边。"
+                    ? "新增 \(deltaTasks) 个待办，点开查看。"
                     : "新增 \(deltaTasks) 个待办，点开看看。"
             )
         } else if lastKnownOverdueCount > previousOverdueCount {
             showStatusNotification(
-                title: preferences.displayStyle == "cute" ? "小狗叼着牵引绳" : "有任务已逾期",
+                title: preferences.displayStyle == "cute" ? "有任务已逾期" : "有任务已逾期",
                 body: "现在有 \(lastKnownOverdueCount) 个逾期待办。"
             )
         }
@@ -1279,11 +1301,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         reloadTasks()
 
         if isLikelyLarkWindow(at: point) {
-            scanScreenForTasks(dialogTitle: "小狗从飞书窗口闻到可能待办", skipDuplicate: false)
+            scanScreenForTasks(dialogTitle: "从飞书窗口识别待办", skipDuplicate: false)
         } else {
             showMessage(
-                "小狗准备好了",
-                detail: "把小狗拖到飞书聊天或会议纪要窗口附近触发当前屏幕识别。"
+                "准备识别",
+                detail: "拖到飞书聊天或会议纪要窗口附近触发当前屏幕识别。"
             )
             finishSniffing(as: .idle)
         }
@@ -1354,7 +1376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             finishSniffing(as: .foundTask)
         } else {
             finishSniffing(as: .idle)
-            showMessage("写入失败", detail: "小狗闻到了待办，但没有成功写入飞书 Base。")
+            showMessage("写入失败", detail: "识别到了待办，但没有成功写入飞书 Base。")
         }
     }
 
@@ -1522,7 +1544,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             scheduleWalkReturn()
         } else {
             showMessage(
-                "写回失败，先别遛狗",
+                "写回失败",
                 detail: "完成状态没有成功写回飞书 Base，请稍后重试。"
             )
         }
