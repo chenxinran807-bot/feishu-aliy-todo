@@ -4,6 +4,7 @@ import type {
   ProactiveSuggestion,
   WorkSession,
 } from "./intentTypes";
+import { extractTaskDraftsFromMaterial } from "./taskIntake";
 
 export interface GenerateSuggestionsInput {
   events: IntentEvent[];
@@ -28,13 +29,50 @@ function isTypeAllowed(settings: IntentSettings, type: ProactiveSuggestion["type
 }
 
 export function generateSuggestions(input: GenerateSuggestionsInput): ProactiveSuggestion[] {
-  const { sessions, existingSuggestions, settings, now } = input;
+  const { events, sessions, existingSuggestions, settings, now } = input;
 
   if (!settings.intentCollectionEnabled || !settings.proactiveSuggestionsEnabled) {
     return [];
   }
 
   const suggestions: ProactiveSuggestion[] = [];
+
+  if (isTypeAllowed(settings, "create_task")) {
+    for (const event of events) {
+      if (event.relatedTaskIds.length > 0 || !isMaterialTaskIntake(event.textContext)) {
+        continue;
+      }
+
+      const drafts = extractTaskDraftsFromMaterial(event.textContext);
+      drafts.forEach((draft, index) => {
+        const id = `suggestion-${event.id}-${index}`;
+        if (existingSuggestions.some((suggestion) => suggestion.id === id)) return;
+
+        suggestions.push({
+          id,
+          type: "create_task",
+          title: "确认 Aime 提炼的任务",
+          body: draft.title,
+          confidence: 0.78,
+          sourceEventIds: [event.id],
+          relatedTaskIds: [],
+          suggestedAction: {
+            kind: "create_task",
+            label: "加入待办",
+            payload: {
+              title: draft.title,
+              sourceType: draft.sourceType,
+            },
+            requiresConfirmation: true,
+            confirmed: false,
+          },
+          state: "pending",
+          createdAt: now,
+          expiresAt: addHours(now, 2),
+        });
+      });
+    }
+  }
 
   for (const session of sessions) {
     if (session.relatedTaskIds.length > 0 || hasExistingSuggestion(existingSuggestions, session)) {
@@ -69,6 +107,10 @@ export function generateSuggestions(input: GenerateSuggestionsInput): ProactiveS
   }
 
   return suggestions;
+}
+
+function isMaterialTaskIntake(textContext: string): boolean {
+  return /会议纪要|聊天记录|帮我新增任务|新增任务|创建任务/.test(textContext);
 }
 
 export function expireSuggestions(suggestions: ProactiveSuggestion[], now: string): ProactiveSuggestion[] {

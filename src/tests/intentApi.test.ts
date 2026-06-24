@@ -60,6 +60,23 @@ describe("intentApi", () => {
     expect(snapshot.tasks.some((task) => task.title === "整理竞品信息" && task.sourceType === "manual")).toBe(true);
   });
 
+  it("accepts an extracted chat task suggestion with its source type", async () => {
+    await intentApi.captureEvent({
+      triggerType: "manual_capture",
+      textContext: "聊天记录：记得跟进设计反馈。",
+      relatedTaskIds: [],
+      privacyLevel: "local_only",
+    });
+    const state = await intentApi.getState();
+
+    await intentApi.acceptSuggestion(state.suggestions[0].id);
+    const snapshot = await desktopApi.getSnapshot();
+
+    expect(snapshot.tasks.some((task) => task.title === "跟进设计反馈" && task.sourceType === "group_chat")).toBe(
+      true,
+    );
+  });
+
   it("completing a task does not create intent suggestions", async () => {
     const snapshot = await desktopApi.getSnapshot();
 

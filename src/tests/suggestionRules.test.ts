@@ -71,6 +71,31 @@ describe("generateSuggestions", () => {
       }),
     ).toHaveLength(0);
   });
+
+  it("creates one pending task suggestion for each extracted material task", () => {
+    const suggestions = generateSuggestions({
+      events: [
+        {
+          id: "evt-material",
+          triggerType: "manual_capture",
+          textContext: "会议纪要：1. 周三前整理竞品信息；2. 明天发评审材料给团队",
+          relatedTaskIds: [],
+          createdAt: "2026-06-24T09:00:00.000Z",
+          privacyLevel: "local_only",
+        },
+      ],
+      sessions: [],
+      existingSuggestions: [],
+      settings: defaultIntentSettings,
+      now: "2026-06-24T09:00:00.000Z",
+    });
+
+    expect(suggestions.map((suggestion) => suggestion.body)).toEqual([
+      "周三前整理竞品信息",
+      "明天发评审材料给团队",
+    ]);
+    expect(suggestions.every((suggestion) => suggestion.suggestedAction.requiresConfirmation)).toBe(true);
+  });
 });
 
 describe("expireSuggestions", () => {

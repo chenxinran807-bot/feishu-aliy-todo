@@ -8,7 +8,7 @@ import type {
 } from "../domain/intentTypes";
 import { defaultIntentSettings, emptyIntentState } from "../domain/intentTypes";
 import { expireSuggestions, generateSuggestions } from "../domain/suggestionRules";
-import type { AppSnapshot, SyncedTask } from "../domain/types";
+import type { AppSnapshot, SourceType, SyncedTask } from "../domain/types";
 import { sampleSnapshot } from "../data/sampleData";
 
 interface AimeDesktopApi {
@@ -177,13 +177,14 @@ async function createTaskFromSuggestion(suggestion: ProactiveSuggestion): Promis
     typeof suggestion.suggestedAction.payload?.title === "string"
       ? suggestion.suggestedAction.payload.title
       : suggestion.body;
+  const sourceType = asSourceType(suggestion.suggestedAction.payload?.sourceType) ?? "manual";
   const snapshot = await loadLocalSnapshot();
   const createdAt = nowIso();
   const task: SyncedTask = {
     id: createId("task"),
     larkRecordId: createId("local"),
     title,
-    sourceType: "manual",
+    sourceType,
     status: "open",
     createdAt,
     updatedAt: createdAt,
@@ -203,6 +204,15 @@ async function createTaskFromSuggestion(suggestion: ProactiveSuggestion): Promis
       ...snapshot.localMeta,
     ],
   });
+}
+
+function asSourceType(value: unknown): SourceType | undefined {
+  return value === "group_chat" ||
+    value === "meeting_note" ||
+    value === "private_chat" ||
+    value === "manual"
+    ? value
+    : undefined;
 }
 
 function postNative(message: Record<string, unknown>): void {
