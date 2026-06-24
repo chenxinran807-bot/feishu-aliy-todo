@@ -214,6 +214,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
         if preferences.displayStyle == "cute" {
             rootStack.addArrangedSubview(dogDenSummary(tasks: tasks))
+            rootStack.addArrangedSubview(dogTaskPreview(sortedTasks))
+            rootStack.addArrangedSubview(resizeHandle())
+            return
         } else if let statusView = styleStatusView(openCount: actionableTasks.count, overdueCount: overdueTasks.count) {
             rootStack.addArrangedSubview(statusView)
         }
@@ -653,6 +656,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ])
 
         return scrollView
+    }
+
+    private func dogTaskPreview(_ tasks: [AimeTask]) -> NSView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+
+        stack.addArrangedSubview(label("待办", size: 12, weight: .medium, color: mutedColor()))
+
+        let previewTasks = Array(tasks.prefix(2))
+        if previewTasks.isEmpty {
+            stack.addArrangedSubview(card(label("当前没有待办，带小狗休息一下", size: 13, weight: .semibold), width: contentWidth()))
+            return stack
+        }
+
+        previewTasks.forEach { task in
+            stack.addArrangedSubview(dogPreviewRow(task))
+        }
+
+        if tasks.count > previewTasks.count {
+            stack.addArrangedSubview(label("还有 \(tasks.count - previewTasks.count) 件，保持轻量预览", size: 11, weight: .medium, color: mutedColor()))
+        }
+        return stack
+    }
+
+    private func dogPreviewRow(_ task: AimeTask) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 10
+
+        let check = actionButton("完成", representedObject: task.id, action: #selector(completeTask(_:)))
+        check.bezelStyle = .rounded
+        check.widthAnchor.constraint(equalToConstant: 54).isActive = true
+
+        let titleStack = NSStackView()
+        titleStack.orientation = .vertical
+        titleStack.alignment = .leading
+        titleStack.spacing = 2
+        let priority = preferences.priorityByTaskId[task.id] ?? "P2"
+        titleStack.addArrangedSubview(label("\(priority) · \(task.title)", size: 13, weight: .bold))
+        titleStack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 11, weight: .medium, color: mutedColor()))
+
+        let more = menuButton(title: "更多", action: #selector(showTaskMoreMenu(_:)), payload: task.id)
+
+        row.addArrangedSubview(check)
+        row.addArrangedSubview(titleStack)
+        row.addArrangedSubview(more)
+        return card(row, width: contentWidth(), priority: priority, isPinned: preferences.pinnedTaskIds.contains(task.id))
     }
 
     private func taskCardView(_ task: AimeTask) -> NSView {
