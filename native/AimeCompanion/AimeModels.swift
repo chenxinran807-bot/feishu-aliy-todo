@@ -20,7 +20,7 @@ struct LocalPreferences: Codable, Equatable {
     var priorityFilter: String = "all"
     var projectFilter: String = "all"
     var statusFilter: String = "open"
-    var expandedPanelWidth: Double = 320
-    var expandedPanelHeight: Double = 320
+    var expandedPanelWidth: Double = 160
+    var expandedPanelHeight: Double = 160
     var displayStyle: String = "cute"
 }
