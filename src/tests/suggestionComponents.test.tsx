@@ -57,10 +57,15 @@ describe("ManualCaptureForm", () => {
 
     render(<ManualCaptureForm onCapture={onCapture} />);
 
-    fireEvent.change(screen.getByLabelText("捕捉当前意图"), {
+    expect(screen.getByLabelText("交给 Aime 处理")).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("粘贴会议纪要、聊天记录，或直接告诉 Aime 要新增什么任务"),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("交给 Aime 处理"), {
       target: { value: "整理竞品信息" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "捕捉" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成待确认任务" }));
 
     expect(onCapture).toHaveBeenCalledWith({
       triggerType: "manual_capture",
