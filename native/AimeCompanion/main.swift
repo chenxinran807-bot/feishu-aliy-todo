@@ -162,15 +162,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         rootStack = NSStackView()
         rootStack.orientation = .vertical
         rootStack.alignment = .leading
-        rootStack.spacing = 10
+        rootStack.spacing = 22
         rootStack.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(rootStack)
 
         NSLayoutConstraint.activate([
-            rootStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
-            rootStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
-            rootStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 14),
-            rootStack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -14),
+            rootStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 30),
+            rootStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -30),
+            rootStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 28),
+            rootStack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -24),
         ])
 
         return container
@@ -214,7 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
         if preferences.displayStyle == "cute" {
             rootStack.addArrangedSubview(dogDenSummary(tasks: tasks))
-            rootStack.addArrangedSubview(dogTaskPreview(sortedTasks))
+            rootStack.addArrangedSubview(webAlignedTaskListPreview(sortedTasks))
             rootStack.addArrangedSubview(resizeHandle())
             return
         } else if let statusView = styleStatusView(openCount: actionableTasks.count, overdueCount: overdueTasks.count) {
@@ -306,29 +306,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 8
+        stack.spacing = 18
 
         let nextTaskRow = NSStackView()
         nextTaskRow.orientation = .vertical
         nextTaskRow.alignment = .leading
-        nextTaskRow.spacing = 3
-        nextTaskRow.addArrangedSubview(label("下一件最重要的事", size: 11, weight: .medium, color: mutedColor()))
-        nextTaskRow.addArrangedSubview(label(nextTaskTitle(from: tasks), size: 16, weight: .bold))
-        nextTaskRow.addArrangedSubview(label(nextTaskMeta(from: tasks), size: 11, weight: .medium, color: mutedColor()))
+        nextTaskRow.spacing = 7
+        nextTaskRow.addArrangedSubview(label("下一件最重要的事", size: 18, weight: .bold, color: mutedColor()))
+        nextTaskRow.addArrangedSubview(label(nextTaskTitle(from: tasks), size: 30, weight: .heavy))
+        nextTaskRow.addArrangedSubview(label(nextTaskMeta(from: tasks), size: 18, weight: .bold, color: mutedColor()))
 
         let metrics = NSStackView()
         metrics.orientation = .horizontal
         metrics.alignment = .centerY
-        metrics.spacing = 6
-        metrics.addArrangedSubview(metricPill(title: "P0", value: "\(petState.p0Count)", columns: 3))
-        metrics.addArrangedSubview(metricPill(title: "逾期", value: "\(petState.overdueCount)", columns: 3))
-        metrics.addArrangedSubview(metricPill(title: "待领取狗粮", value: "\(petState.pendingKibbleCount)", columns: 3))
+        metrics.spacing = 14
+        let metricItems = webVisibleMetrics()
+        metricItems.forEach { item in
+            metrics.addArrangedSubview(metricPill(title: item.title, value: item.value, columns: max(metricItems.count, 1)))
+        }
 
         stack.addArrangedSubview(nextTaskRow)
-        stack.addArrangedSubview(metrics)
-        stack.addArrangedSubview(label(dogStateLine(), size: 11, weight: .medium, color: mutedColor()))
+        if !metricItems.isEmpty {
+            stack.addArrangedSubview(metrics)
+        }
+        stack.addArrangedSubview(webRewardCallout(dogStateLine()))
 
         return card(stack, width: contentWidth())
+    }
+
+    private func webVisibleMetrics() -> [(title: String, value: String)] {
+        var items: [(String, String)] = []
+        if petState.p0Count > 0 {
+            items.append(("P0", "\(petState.p0Count)"))
+        }
+        if petState.overdueCount > 0 {
+            items.append(("逾期", "\(petState.overdueCount)"))
+        }
+        if petState.pendingKibbleCount > 0 {
+            items.append(("待领取狗粮", "\(petState.pendingKibbleCount)"))
+        }
+        return items
     }
 
     private func metricRow(_ items: [(String, String)]) -> NSView {
@@ -343,19 +360,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func metricPill(title: String, value: String, columns: Int = 2) -> NSView {
-        let innerWidth = contentWidth() - 20
-        let totalGap = CGFloat(max(0, columns - 1)) * 6
-        let minimumWidth: CGFloat = columns >= 3 ? 58 : 80
+        let innerWidth = contentWidth() - 40
+        let totalGap = CGFloat(max(0, columns - 1)) * 14
+        let minimumWidth: CGFloat = columns >= 3 ? 80 : 120
         let width = columns <= 1 ? innerWidth : max(minimumWidth, (innerWidth - totalGap) / CGFloat(columns))
         let container = NSView()
         container.wantsLayer = true
         container.layer?.backgroundColor = styleStatusBackgroundColor().cgColor
-        container.layer?.cornerRadius = preferences.displayStyle == "cute" ? 12 : 7
+        container.layer?.cornerRadius = preferences.displayStyle == "cute" ? 22 : 7
         container.translatesAutoresizingMaskIntoConstraints = false
         container.widthAnchor.constraint(equalToConstant: width).isActive = true
 
-        let titleLabel = label(title, size: columns >= 3 ? 9 : 10, weight: .medium, color: mutedColor())
-        let valueLabel = label(value, size: 14, weight: .bold, color: NSColor.labelColor)
+        let titleLabel = label(title, size: columns >= 3 ? 14 : 15, weight: .bold, color: mutedColor())
+        let valueLabel = label(value, size: 30, weight: .heavy, color: NSColor.labelColor)
         titleLabel.maximumNumberOfLines = 1
         valueLabel.maximumNumberOfLines = 1
         titleLabel.lineBreakMode = .byTruncatingTail
@@ -371,12 +388,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         container.addSubview(textStack)
 
         NSLayoutConstraint.activate([
-            textStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
-            textStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6),
-            textStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 5),
-            textStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -5),
+            textStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
+            textStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+            textStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            textStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
         ])
         return container
+    }
+
+    private func webRewardCallout(_ text: String) -> NSView {
+        let callout = label(text, size: 18, weight: .bold, color: NSColor(calibratedRed: 0.45, green: 0.35, blue: 0.27, alpha: 1))
+        callout.maximumNumberOfLines = 2
+        callout.wantsLayer = true
+        callout.layer?.backgroundColor = NSColor(calibratedRed: 1, green: 0.97, blue: 0.93, alpha: 0.96).cgColor
+        callout.layer?.cornerRadius = 22
+        callout.layer?.borderWidth = 1.5
+        callout.layer?.borderColor = NSColor(calibratedRed: 0.9, green: 0.78, blue: 0.67, alpha: 1).cgColor
+        return padded(callout, width: contentWidth() - 20, vertical: 14)
     }
 
     private func dogFace() -> String {
@@ -517,38 +545,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         row.spacing = 10
 
         let avatar = preferences.displayStyle == "cute" ? dogFace() : avatarText()
-        let avatarSize: CGFloat = preferences.displayStyle == "cute" ? 24 : 17
+        let avatarSize: CGFloat = preferences.displayStyle == "cute" ? 44 : 17
         let orb = label(avatar, size: avatarSize, weight: .bold, color: avatarTextColor())
         orb.alignment = .center
         orb.wantsLayer = true
         orb.layer?.backgroundColor = avatarColor().cgColor
-        orb.layer?.cornerRadius = avatarCornerRadius(size: 44)
-        orb.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        orb.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        let avatarBoxSize: CGFloat = preferences.displayStyle == "cute" ? 88 : 44
+        orb.layer?.cornerRadius = avatarCornerRadius(size: avatarBoxSize)
+        orb.widthAnchor.constraint(equalToConstant: avatarBoxSize).isActive = true
+        orb.heightAnchor.constraint(equalToConstant: avatarBoxSize).isActive = true
 
         let summaryText = preferences.displayStyle == "cute"
             ? "下一件最重要的事"
             : "\(openCount) open · \(overdueCount) overdue"
-        let summarySize: CGFloat = preferences.displayStyle == "cute" ? 16 : 17
+        let summarySize: CGFloat = preferences.displayStyle == "cute" ? 31 : 17
         let summary = label(summaryText, size: summarySize, weight: .semibold)
         let titleStack = NSStackView()
         titleStack.orientation = .vertical
-        titleStack.spacing = 2
-        titleStack.addArrangedSubview(label(styleTitle(), size: 12, weight: .medium, color: mutedColor()))
+        titleStack.spacing = 5
+        titleStack.addArrangedSubview(label(styleTitle(), size: preferences.displayStyle == "cute" ? 24 : 12, weight: .bold, color: mutedColor()))
         titleStack.addArrangedSubview(summary)
         if preferences.displayStyle == "cute" {
-            titleStack.addArrangedSubview(label("拖到飞书窗口：嗅探当前上下文", size: 10, weight: .medium, color: mutedColor()))
+            titleStack.addArrangedSubview(label("手动捕捉当前意图", size: 18, weight: .bold, color: mutedColor()))
         }
 
         let collapse = NSButton(title: "收起", target: self, action: #selector(collapseWidget))
         collapse.bezelStyle = .rounded
-        collapse.controlSize = .small
-
-        let more = menuButton(title: "更多", action: #selector(showHeaderMoreMenu(_:)))
+        collapse.controlSize = preferences.displayStyle == "cute" ? .regular : .small
 
         row.addArrangedSubview(orb)
         row.addArrangedSubview(titleStack)
-        row.addArrangedSubview(more)
+        if preferences.displayStyle != "cute" {
+            let more = menuButton(title: "更多", action: #selector(showHeaderMoreMenu(_:)))
+            row.addArrangedSubview(more)
+        }
         row.addArrangedSubview(collapse)
         return row
     }
@@ -682,6 +712,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return stack
     }
 
+    private func webAlignedTaskListPreview(_ tasks: [AimeTask]) -> NSView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 16
+
+        stack.addArrangedSubview(label("待办事项", size: 24, weight: .bold, color: mutedColor()))
+
+        let openTasks = tasks.filter { isActionableStatus($0.status) }
+        let previewTasks = Array(openTasks.prefix(3))
+        if previewTasks.isEmpty {
+            stack.addArrangedSubview(card(label("今天已经清空", size: 20, weight: .bold), width: contentWidth()))
+            return stack
+        }
+
+        previewTasks.forEach { task in
+            stack.addArrangedSubview(webAlignedTaskRow(task))
+        }
+
+        if openTasks.count > previewTasks.count {
+            stack.addArrangedSubview(label("还有 \(openTasks.count - previewTasks.count) 件，保持轻量预览", size: 18, weight: .bold, color: mutedColor()))
+        }
+        return stack
+    }
+
+    private func webAlignedTaskRow(_ task: AimeTask) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 18
+
+        let check = AimeActionButton(title: "", target: self, action: #selector(completeTask(_:)))
+        check.payload = task.id
+        check.isBordered = false
+        check.wantsLayer = true
+        check.layer?.backgroundColor = NSColor.clear.cgColor
+        check.layer?.borderWidth = 3
+        check.layer?.borderColor = NSColor(calibratedRed: 0.31, green: 0.28, blue: 0.27, alpha: 1).cgColor
+        check.layer?.cornerRadius = 15
+        check.translatesAutoresizingMaskIntoConstraints = false
+        check.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        check.heightAnchor.constraint(equalToConstant: 30).isActive = true
+
+        let titleStack = NSStackView()
+        titleStack.orientation = .vertical
+        titleStack.alignment = .leading
+        titleStack.spacing = 4
+        let priority = preferences.priorityByTaskId[task.id] ?? "P2"
+        titleStack.addArrangedSubview(label("\(priority) · \(task.title)", size: 24, weight: .heavy))
+        titleStack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 17, weight: .bold, color: mutedColor()))
+
+        row.addArrangedSubview(check)
+        row.addArrangedSubview(titleStack)
+        return card(row, width: contentWidth(), priority: priority, isPinned: preferences.pinnedTaskIds.contains(task.id))
+    }
+
     private func dogPreviewRow(_ task: AimeTask) -> NSView {
         let row = NSStackView()
         row.orientation = .horizontal
@@ -811,13 +897,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         wrapper.layer?.borderColor = borderColor(priority: priority, isPinned: isPinned).cgColor
         content.translatesAutoresizingMaskIntoConstraints = false
         wrapper.addSubview(content)
+        let horizontalPadding: CGFloat = preferences.displayStyle == "cute" ? 22 : 10
+        let verticalPadding: CGFloat = preferences.displayStyle == "cute" ? 20 : 8
 
         NSLayoutConstraint.activate([
             wrapper.widthAnchor.constraint(equalToConstant: width),
-            content.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: 10),
-            content.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor, constant: -10),
-            content.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: 8),
-            content.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor, constant: -8),
+            content.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: horizontalPadding),
+            content.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor, constant: -horizontalPadding),
+            content.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: verticalPadding),
+            content.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor, constant: -verticalPadding),
         ])
 
         return wrapper
@@ -839,10 +927,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func cardColor(priority: String, isPinned: Bool) -> NSColor {
         if preferences.displayStyle == "cute" {
-            if isPinned { return NSColor(calibratedRed: 1, green: 0.92, blue: 0.72, alpha: 0.95) }
-            if priority == "P0" { return NSColor(calibratedRed: 1, green: 0.84, blue: 0.88, alpha: 0.94) }
-            if priority == "P1" { return NSColor(calibratedRed: 0.86, green: 0.95, blue: 1, alpha: 0.92) }
-            return NSColor(calibratedRed: 0.98, green: 0.95, blue: 1, alpha: 0.82)
+            if isPinned { return NSColor(calibratedRed: 1, green: 0.94, blue: 0.79, alpha: 0.98) }
+            return NSColor(calibratedRed: 0.98, green: 0.95, blue: 1, alpha: 0.96)
         }
         if preferences.displayStyle == "minimal" {
             if isPinned { return NSColor.white.withAlphaComponent(0.9) }
@@ -858,7 +944,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func cardCornerRadius() -> CGFloat {
         switch preferences.displayStyle {
         case "minimal": return 5
-        case "cute": return 16
+        case "cute": return 32
         default: return 9
         }
     }
@@ -866,7 +952,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func panelCornerRadius() -> CGFloat {
         switch preferences.displayStyle {
         case "minimal": return 10
-        case "cute": return 24
+        case "cute": return 34
         default: return 18
         }
     }
@@ -1166,8 +1252,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func resetExpandedPanelSize() {
-        preferences.expandedPanelWidth = 320
-        preferences.expandedPanelHeight = 420
+        preferences.expandedPanelWidth = preferences.displayStyle == "cute" ? 760 : 320
+        preferences.expandedPanelHeight = preferences.displayStyle == "cute" ? 820 : 420
         savePreferences()
         guard isExpanded else { return }
         window.setFrame(frameForCurrentMode(), display: true, animate: true)
