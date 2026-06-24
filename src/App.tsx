@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CollapsedWidget } from "./components/CollapsedWidget";
 import { FullWindow } from "./components/FullWindow";
 import { PeekPanel } from "./components/PeekPanel";
@@ -36,6 +36,8 @@ function tomorrowDateKey(): string {
 export function App() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
   const [intentState, setIntentState] = useState<IntentState | null>(null);
+  const taskListRef = useRef<HTMLElement | null>(null);
+  const [taskListHighlighted, setTaskListHighlighted] = useState(false);
   const initialMode = new URLSearchParams(window.location.search).get("mode");
   const [expanded, setExpanded] = useState(
     initialMode === "peek" || initialMode === "full",
@@ -141,6 +143,12 @@ export function App() {
     await refreshIntentState();
   }
 
+  function showTaskList() {
+    taskListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTaskListHighlighted(true);
+    window.setTimeout(() => setTaskListHighlighted(false), 900);
+  }
+
   if (new URLSearchParams(window.location.search).get("mode") === "full") {
     return (
       <FullWindow
@@ -174,6 +182,9 @@ export function App() {
         onTomorrow={(taskId) => void moveToTomorrow(taskId)}
         onHide={(taskId) => void hideTask(taskId)}
         onOpenFull={() => void desktopApi.openFullWindow()}
+        onShowTasks={showTaskList}
+        taskListRef={taskListRef}
+        taskListHighlighted={taskListHighlighted}
         onAcceptSuggestion={(suggestionId) => void acceptSuggestion(suggestionId)}
         onDismissSuggestion={(suggestionId) => void dismissSuggestion(suggestionId)}
         onNeverSuggestType={(suggestionId) => void neverSuggestType(suggestionId)}

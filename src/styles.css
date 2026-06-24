@@ -215,7 +215,8 @@ button {
   margin-top: 30px;
 }
 
-.stats-grid div {
+.stats-grid div,
+.stats-card {
   min-height: 144px;
   display: grid;
   place-items: center;
@@ -223,6 +224,23 @@ button {
   border-radius: 34px;
   background: #f6e3ce;
   color: #746154;
+}
+
+.stats-card {
+  padding: 0;
+  font: inherit;
+}
+
+.stats-card--button {
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.stats-card--button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 26px rgba(99, 78, 58, 0.14);
 }
 
 .stats-grid strong {
@@ -255,6 +273,13 @@ button {
   display: grid;
   gap: 18px;
   margin: 0 44px 46px;
+  scroll-margin-top: 18px;
+  border-radius: 32px;
+  transition: box-shadow 180ms ease;
+}
+
+.task-list--highlighted {
+  box-shadow: 0 0 0 6px rgba(63, 111, 104, 0.18);
 }
 
 .task-row {

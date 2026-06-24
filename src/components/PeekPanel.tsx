@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import type { ProactiveSuggestion } from "../domain/intentTypes";
 import type { ComputedProgressTrack, TaskViewModel } from "../domain/types";
 import { DogPortrait } from "./DogPortrait";
@@ -17,6 +18,9 @@ interface PeekPanelProps {
   onTomorrow: (taskId: string) => void;
   onHide: (taskId: string) => void;
   onOpenFull: () => void;
+  onShowTasks?: () => void;
+  taskListRef?: RefObject<HTMLElement | null>;
+  taskListHighlighted?: boolean;
   onAcceptSuggestion?: (suggestionId: string) => void;
   onDismissSuggestion?: (suggestionId: string) => void;
   onNeverSuggestType?: (suggestionId: string) => void;
@@ -44,6 +48,9 @@ export function PeekPanel({
   onTomorrow,
   onHide,
   onOpenFull,
+  onShowTasks,
+  taskListRef,
+  taskListHighlighted = false,
   onAcceptSuggestion = () => undefined,
   onDismissSuggestion = () => undefined,
   onNeverSuggestType = () => undefined,
@@ -90,10 +97,15 @@ export function PeekPanel({
             <strong>{overdueCount}</strong>
             <span>逾期</span>
           </div>
-          <div>
+          <button
+            className="stats-card stats-card--button"
+            type="button"
+            onClick={onShowTasks}
+            aria-label={`展开待办，${foodCount} 粒待领取狗粮`}
+          >
             <strong>{foodCount}</strong>
             <span>待领取狗粮</span>
-          </div>
+          </button>
         </div>
         <div className="reward-callout">{rewardName}：完成一件后，小狗出门散步中。</div>
       </section>
@@ -112,7 +124,11 @@ export function PeekPanel({
         </section>
       ) : null}
 
-      <section className="task-list" aria-label="待办事项">
+      <section
+        ref={taskListRef}
+        className={`task-list${taskListHighlighted ? " task-list--highlighted" : ""}`}
+        aria-label="待办事项"
+      >
         {rowTasks.length === 0 ? (
           <article className="task-row">
             <span className="task-row__check" aria-hidden="true" />

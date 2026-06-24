@@ -100,6 +100,8 @@ describe("Aime companion redesign", () => {
   });
 
   it("shows the reference expanded panel copy", () => {
+    const showTasks = vi.fn();
+
     render(
       <PeekPanel
         overdueTasks={[p0Task]}
@@ -111,6 +113,7 @@ describe("Aime companion redesign", () => {
         onTomorrow={() => undefined}
         onHide={() => undefined}
         onOpenFull={() => undefined}
+        onShowTasks={showTasks}
       />,
     );
 
@@ -118,6 +121,8 @@ describe("Aime companion redesign", () => {
     expect(screen.getByText("手动捕捉当前意图")).toBeInTheDocument();
     expect(screen.getByText(/完成后遛狗 \+1/)).toBeInTheDocument();
     expect(screen.getAllByText("P0・评审迭代方案")[0]).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开待办，3 粒待领取狗粮" }));
+    expect(showTasks).toHaveBeenCalled();
   });
 
   it("keeps completed tasks checked and at the bottom", () => {
