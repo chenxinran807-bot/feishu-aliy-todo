@@ -1739,9 +1739,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func taskDraftDialog(title: String, initialText: String) -> TaskDraft? {
         var result: TaskDraft?
+        let suggestedTitle = compactTaskTitle(initialText)
+        let contextPreview = recognizedContextPreview(initialText)
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 285),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: contextPreview.isEmpty ? 310 : 430),
             styleMask: [.titled],
             backing: .buffered,
             defer: false
@@ -1758,20 +1760,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let heading = label(title, size: 17, weight: .semibold)
         heading.translatesAutoresizingMaskIntoConstraints = false
 
-        let note = label("保存后会写入飞书 Base。", size: 12, color: mutedColor())
+        let note = label(contextPreview.isEmpty ? "保存后会写入飞书 Base。" : "已从当前飞书/屏幕上下文提取候选待办，保存前可以修改。", size: 12, color: mutedColor())
         note.translatesAutoresizingMaskIntoConstraints = false
 
-        let titleField = NSTextField(string: compactTaskTitle(initialText))
+        let titleField = NSTextField(string: suggestedTitle)
         titleField.placeholderString = "待办标题"
         titleField.translatesAutoresizingMaskIntoConstraints = false
 
         let duePicker = NSDatePicker()
         duePicker.datePickerStyle = .textFieldAndStepper
         duePicker.datePickerElements = [.yearMonthDay, .hourMinute]
-        duePicker.dateValue = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        duePicker.dateValue = inferredDueDate(from: initialText) ?? Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         duePicker.translatesAutoresizingMaskIntoConstraints = false
 
-        let projectField = NSTextField(string: "")
+        let projectField = NSTextField(string: inferredProject(from: initialText))
         projectField.placeholderString = "分类，可留空"
         projectField.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1781,6 +1783,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         dueLabel.translatesAutoresizingMaskIntoConstraints = false
         let projectLabel = label("分类", size: 11, color: mutedColor())
         projectLabel.translatesAutoresizingMaskIntoConstraints = false
+        let contextLabel = label("识别依据", size: 11, color: mutedColor())
+        contextLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let contextScroll = NSScrollView()
+        contextScroll.translatesAutoresizingMaskIntoConstraints = false
+        contextScroll.drawsBackground = false
+        contextScroll.hasVerticalScroller = true
+        contextScroll.borderType = .noBorder
+
+        let contextText = NSTextView()
+        contextText.isEditable = false
+        contextText.isSelectable = true
+        contextText.drawsBackground = true
+        contextText.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.58)
+        contextText.textColor = mutedColor()
+        contextText.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+        contextText.textContainerInset = NSSize(width: 8, height: 6)
+        contextText.string = contextPreview
+        contextScroll.documentView = contextText
 
         let cancelButton = NSButton(title: "取消", target: nil, action: nil)
         cancelButton.bezelStyle = .rounded
@@ -1791,15 +1812,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         saveButton.keyEquivalent = "\r"
         saveButton.translatesAutoresizingMaskIntoConstraints = false
 
-        [heading, note, titleLabel, titleField, dueLabel, duePicker, projectLabel, projectField, cancelButton, saveButton].forEach {
-            content.addSubview($0)
+        var views: [NSView] = [heading, note, titleLabel, titleField, dueLabel, duePicker, projectLabel, projectField, cancelButton, saveButton]
+        if !contextPreview.isEmpty {
+            views += [contextLabel, contextScroll]
         }
+        views.forEach { content.addSubview($0) }
 
-        NSLayoutConstraint.activate([
+        var constraints: [NSLayoutConstraint] = [
             heading.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
             heading.topAnchor.constraint(equalTo: content.topAnchor, constant: 22),
 
             note.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            note.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
             note.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 6),
 
             titleLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
@@ -1833,7 +1857,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             cancelButton.trailingAnchor.constraint(equalTo: saveButton.leadingAnchor, constant: -10),
             cancelButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
             cancelButton.widthAnchor.constraint(equalToConstant: 96),
-        ])
+        ]
+
+        if !contextPreview.isEmpty {
+            constraints += [
+                contextLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+                contextLabel.topAnchor.constraint(equalTo: projectField.bottomAnchor, constant: 12),
+
+                contextScroll.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+                contextScroll.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+                contextScroll.topAnchor.constraint(equalTo: contextLabel.bottomAnchor, constant: 4),
+                contextScroll.bottomAnchor.constraint(equalTo: saveButton.topAnchor, constant: -14),
+            ]
+        }
+
+        NSLayoutConstraint.activate(constraints)
 
         cancelButton.target = self
         cancelButton.action = #selector(closeModalPanel(_:))
@@ -1865,6 +1903,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func closeModalPanel(_ sender: NSButton) {
         NSApp.stopModal(withCode: sender.tag == 1 ? .OK : .cancel)
+    }
+
+    private func recognizedContextPreview(_ text: String) -> String {
+        text
+            .components(separatedBy: .newlines)
+            .map(cleanRecognizedTaskLine)
+            .filter { !$0.isEmpty && !isRecognitionChromeLine($0) }
+            .prefix(8)
+            .joined(separator: "\n")
+    }
+
+    private func inferredProject(from text: String) -> String {
+        let lowered = text.lowercased()
+        if lowered.contains("男装") || lowered.contains("穿搭") || lowered.contains("试穿") {
+            return "AI穿搭"
+        }
+        if lowered.contains("aigc") || lowered.contains("选品") {
+            return "AI选品"
+        }
+        if lowered.contains("评测") || lowered.contains("方案") {
+            return "AI试穿"
+        }
+        if lowered.contains("会议") || lowered.contains("纪要") {
+            return "会议纪要"
+        }
+        if lowered.contains("飞书") {
+            return "飞书"
+        }
+        return ""
+    }
+
+    private func inferredDueDate(from text: String) -> Date? {
+        let calendar = Calendar.current
+        let now = Date()
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = 18
+        components.minute = 0
+
+        if text.contains("今天") {
+            return calendar.date(from: components)
+        }
+        if text.contains("明天") {
+            return calendar.date(byAdding: .day, value: 1, to: calendar.date(from: components) ?? now)
+        }
+        if text.contains("后天") {
+            return calendar.date(byAdding: .day, value: 2, to: calendar.date(from: components) ?? now)
+        }
+
+        let weekdayMap: [(String, Int)] = [
+            ("周一", 2), ("星期一", 2),
+            ("周二", 3), ("星期二", 3),
+            ("周三", 4), ("星期三", 4),
+            ("周四", 5), ("星期四", 5),
+            ("周五", 6), ("星期五", 6),
+            ("周六", 7), ("星期六", 7),
+            ("周日", 1), ("星期日", 1), ("周天", 1), ("星期天", 1),
+        ]
+        if let target = weekdayMap.first(where: { text.contains($0.0) })?.1 {
+            return nextWeekday(target, from: now)
+        }
+        return nil
+    }
+
+    private func nextWeekday(_ targetWeekday: Int, from date: Date) -> Date? {
+        let calendar = Calendar.current
+        let currentWeekday = calendar.component(.weekday, from: date)
+        let daysUntilTarget = (targetWeekday - currentWeekday + 7) % 7
+        let daysToAdd = daysUntilTarget == 0 ? 7 : daysUntilTarget
+        guard let targetDay = calendar.date(byAdding: .day, value: daysToAdd, to: date) else { return nil }
+        var components = calendar.dateComponents([.year, .month, .day], from: targetDay)
+        components.hour = 18
+        components.minute = 0
+        return calendar.date(from: components)
     }
 
     private func compactTaskTitle(_ text: String) -> String {
