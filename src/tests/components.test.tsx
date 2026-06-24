@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CollapsedWidget } from "../components/CollapsedWidget";
 import { PeekPanel } from "../components/PeekPanel";
 import { ProgressTrack } from "../components/ProgressTrack";
-import type { ComputedProgressTrack, TaskViewModel } from "../domain/types";
+import { App } from "../App";
+import type { AppSnapshot, ComputedProgressTrack, TaskViewModel } from "../domain/types";
 
 const p0Task: TaskViewModel = {
   id: "p0",
@@ -116,7 +117,7 @@ describe("Aime companion redesign", () => {
     expect(screen.getAllByText("下一件最重要的事")[0]).toBeInTheDocument();
     expect(screen.getByText("手动捕捉当前意图")).toBeInTheDocument();
     expect(screen.getByText(/完成后遛狗 \+1/)).toBeInTheDocument();
-    expect(screen.getByText("AI 试穿 - 迭代评测方案")).toBeInTheDocument();
+    expect(screen.getAllByText("P0・评审迭代方案")[0]).toBeInTheDocument();
   });
 
   it("keeps completed tasks checked and at the bottom", () => {
@@ -142,5 +143,71 @@ describe("Aime companion redesign", () => {
     expect(rows[rows.length - 1]).toHaveTextContent("整理竞品信息");
     fireEvent.click(screen.getByLabelText("取消完成 整理竞品信息"));
     expect(reopenTask).toHaveBeenCalledWith("done-task");
+  });
+
+  it("reopens only the completed task the user clicked", async () => {
+    const snapshot: AppSnapshot = {
+      syncState: "idle",
+      tasks: [
+        {
+          id: "open-task",
+          larkRecordId: "rec-open",
+          title: "继续推进方案",
+          sourceType: "manual",
+          status: "open",
+          dueDate: "2026-06-24",
+          createdAt: "2026-06-24T00:00:00.000Z",
+          updatedAt: "2026-06-24T00:00:00.000Z",
+        },
+        {
+          id: "done-one",
+          larkRecordId: "rec-one",
+          title: "已完成一",
+          sourceType: "manual",
+          status: "done",
+          dueDate: "2026-06-24",
+          createdAt: "2026-06-24T00:00:00.000Z",
+          updatedAt: "2026-06-24T00:01:00.000Z",
+        },
+        {
+          id: "done-two",
+          larkRecordId: "rec-two",
+          title: "已完成二",
+          sourceType: "manual",
+          status: "done",
+          dueDate: "2026-06-24",
+          createdAt: "2026-06-24T00:00:00.000Z",
+          updatedAt: "2026-06-24T00:02:00.000Z",
+        },
+      ],
+      localMeta: [
+        { taskId: "open-task", pinned: false, hidden: false, displayPriority: 2 },
+        { taskId: "done-one", pinned: false, hidden: false, displayPriority: 0 },
+        { taskId: "done-two", pinned: false, hidden: false, displayPriority: 0 },
+      ],
+      tracks: [],
+      settings: {
+        widgetX: 0,
+        widgetY: 0,
+        miniMode: false,
+        reminderHour: 9,
+      },
+    };
+    window.localStorage.setItem("aime-desktop-task-companion.snapshot", JSON.stringify(snapshot));
+    window.history.pushState(null, "", "/?mode=peek");
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByLabelText("取消完成 已完成一"));
+
+    await waitFor(() => {
+      const saved = JSON.parse(
+        window.localStorage.getItem("aime-desktop-task-companion.snapshot") ?? "{}",
+      ) as AppSnapshot;
+      expect(saved.tasks.find((task) => task.id === "done-one")?.status).toBe("open");
+      expect(saved.tasks.find((task) => task.id === "done-two")?.status).toBe("done");
+    });
+    expect(await screen.findByLabelText("取消完成 已完成二")).toBeInTheDocument();
+    expect(screen.getByLabelText("完成 已完成一")).toBeInTheDocument();
   });
 });

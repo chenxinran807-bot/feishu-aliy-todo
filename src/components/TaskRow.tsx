@@ -10,7 +10,7 @@ interface TaskRowProps {
 
 export function TaskRow({ task, onComplete, onReopen, onTomorrow, onHide }: TaskRowProps) {
   const isDone = task.status === "done";
-  const isPrimary = !isDone && (task.meta.displayPriority <= 1 || task.title.includes("试穿"));
+  const isPrimary = !isDone && task.title.includes("试穿");
   const displayTitle = isPrimary ? "AI 试穿 - 迭代评测方案" : task.title;
 
   return (

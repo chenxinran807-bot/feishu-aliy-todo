@@ -22,6 +22,15 @@ interface PeekPanelProps {
   onNeverSuggestType?: (suggestionId: string) => void;
 }
 
+function uniqueTasks(tasks: TaskViewModel[]): TaskViewModel[] {
+  const seen = new Set<string>();
+  return tasks.filter((task) => {
+    if (seen.has(task.id)) return false;
+    seen.add(task.id);
+    return true;
+  });
+}
+
 export function PeekPanel({
   overdueTasks,
   todayTasks,
@@ -40,14 +49,14 @@ export function PeekPanel({
   onNeverSuggestType = () => undefined,
 }: PeekPanelProps) {
   const importantTask = overdueTasks[0] ?? todayTasks[0] ?? laterTasks[0];
-  const visibleTasks = [
-    importantTask,
-    ...todayTasks,
-    ...laterTasks,
-    ...overdueTasks.slice(1),
-  ]
-    .filter((task): task is TaskViewModel => Boolean(task))
-    .slice(0, 2);
+  const visibleTasks = uniqueTasks(
+    [
+      importantTask,
+      ...todayTasks,
+      ...laterTasks,
+      ...overdueTasks.slice(1),
+    ].filter((task): task is TaskViewModel => Boolean(task)),
+  ).slice(0, 2);
   const bottomTasks = completedTasks.slice(0, 3);
   const rowTasks = [...visibleTasks, ...bottomTasks];
   const rewardName = tracks[0]?.name ?? "遛狗 +1";
