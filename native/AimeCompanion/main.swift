@@ -15,6 +15,12 @@ final class AimeMenuButton: NSButton {
     var payload: String = ""
 }
 
+private enum NativeTaskGroup: String {
+    case p0
+    case overdue
+    case open
+}
+
 final class PetDragButton: NSButton {
     var onDragEnded: ((NSPoint) -> Void)?
     private var didDrag = false
@@ -117,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var lastRecognizedScreenText = ""
     private var lastKnownTaskCount = 0
     private var lastKnownOverdueCount = 0
+    private var activeTaskGroup: NativeTaskGroup?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -214,7 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
         if preferences.displayStyle == "cute" {
             rootStack.addArrangedSubview(dogDenSummary(tasks: tasks))
-            rootStack.addArrangedSubview(webAlignedTaskListPreview(sortedTasks))
+            rootStack.addArrangedSubview(webAlignedTaskListPreview(groupedTasks(from: visibleTasks)))
             rootStack.addArrangedSubview(resizeHandle())
             return
         } else if let statusView = styleStatusView(openCount: actionableTasks.count, overdueCount: overdueTasks.count) {
@@ -322,7 +329,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         metrics.spacing = scaledCute(14)
         let metricItems = webVisibleMetrics()
         metricItems.forEach { item in
-            metrics.addArrangedSubview(metricPill(title: item.title, value: item.value, columns: max(metricItems.count, 1)))
+            metrics.addArrangedSubview(metricPill(
+                title: item.title,
+                value: item.value,
+                columns: max(metricItems.count, 1),
+                group: item.group
+            ))
         }
 
         stack.addArrangedSubview(nextTaskRow)
@@ -334,16 +346,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return card(stack, width: contentWidth())
     }
 
-    private func webVisibleMetrics() -> [(title: String, value: String)] {
-        var items: [(String, String)] = []
+    private func webVisibleMetrics() -> [(title: String, value: String, group: NativeTaskGroup)] {
+        var items: [(String, String, NativeTaskGroup)] = []
         if petState.p0Count > 0 {
-            items.append(("P0", "\(petState.p0Count)"))
+            items.append(("P0", "\(petState.p0Count)", .p0))
         }
         if petState.overdueCount > 0 {
-            items.append(("逾期", "\(petState.overdueCount)"))
+            items.append(("逾期", "\(petState.overdueCount)", .overdue))
         }
         if petState.pendingKibbleCount > 0 {
-            items.append(("待领取狗粮", "\(petState.pendingKibbleCount)"))
+            items.append(("待领取狗粮", "\(petState.pendingKibbleCount)", .open))
         }
         return items
     }
@@ -359,12 +371,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return row
     }
 
-    private func metricPill(title: String, value: String, columns: Int = 2) -> NSView {
+    private func metricPill(title: String, value: String, columns: Int = 2, group: NativeTaskGroup? = nil) -> NSView {
         let innerWidth = contentWidth() - scaledCute(40)
         let totalGap = CGFloat(max(0, columns - 1)) * scaledCute(14)
         let minimumWidth: CGFloat = columns >= 3 ? scaledCute(80) : scaledCute(120)
         let width = columns <= 1 ? innerWidth : max(minimumWidth, (innerWidth - totalGap) / CGFloat(columns))
-        let container = NSView()
+        let container: NSView
+        if let group {
+            let button = AimeActionButton(title: "", target: self, action: #selector(showNativeTaskGroup(_:)))
+            button.payload = group.rawValue
+            button.isBordered = false
+            container = button
+        } else {
+            container = NSView()
+        }
         container.wantsLayer = true
         container.layer?.backgroundColor = styleStatusBackgroundColor().cgColor
         container.layer?.cornerRadius = preferences.displayStyle == "cute" ? scaledCute(20) : 7
@@ -501,6 +521,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let projectMatches = preferences.projectFilter == "all" || project == preferences.projectFilter
             return statusMatches && priorityMatches && projectMatches
         }
+    }
+
+    private func groupedTasks(from tasks: [AimeTask]) -> [AimeTask] {
+        let visibleOpenTasks = tasks.filter { isActionableStatus($0.status) }
+        let filtered: [AimeTask]
+        switch activeTaskGroup {
+        case .p0:
+            filtered = visibleOpenTasks.filter { preferences.priorityByTaskId[$0.id] == "P0" }
+        case .overdue:
+            filtered = visibleOpenTasks.filter { task in
+                guard let dueDate = task.dueDate else { return false }
+                return String(dueDate.prefix(10)) < todayKey()
+            }
+        case .open, .none:
+            filtered = visibleOpenTasks
+        }
+        return sortTasks(filtered)
     }
 
     private func isActionableStatus(_ status: String) -> Bool {
@@ -1128,8 +1165,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func updateWindowResizeBounds() {
         if isExpanded {
-            window.minSize = NSSize(width: 420, height: 420)
-            window.maxSize = NSSize(width: 860, height: 940)
+            window.minSize = NSSize(width: 300, height: 340)
+            window.maxSize = NSSize(width: 760, height: 860)
         } else {
             window.minSize = NSSize(width: 120, height: 104)
             window.maxSize = NSSize(width: 120, height: 104)
@@ -1262,12 +1299,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func resetExpandedPanelSize() {
-        preferences.expandedPanelWidth = preferences.displayStyle == "cute" ? 760 : 320
-        preferences.expandedPanelHeight = preferences.displayStyle == "cute" ? 820 : 420
+        preferences.expandedPanelWidth = preferences.displayStyle == "cute" ? 560 : 320
+        preferences.expandedPanelHeight = preferences.displayStyle == "cute" ? 640 : 420
         savePreferences()
         guard isExpanded else { return }
         window.setFrame(frameForCurrentMode(), display: true, animate: true)
         reloadTasks()
+    }
+
+    @objc private func showNativeTaskGroup(_ sender: AimeActionButton) {
+        activeTaskGroup = NativeTaskGroup(rawValue: sender.payload)
+        reloadTasks(derivePetState: false)
     }
 
     private func scanScreenForTasks(dialogTitle: String, skipDuplicate: Bool) {
@@ -1718,13 +1760,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func compactTaskTitle(_ text: String) -> String {
-        let collapsed = text
+        let lines = text
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-            .prefix(4)
+
+        if let bestLine = lines
+            .map(cleanRecognizedTaskLine)
+            .filter({ !$0.isEmpty && !isRecognitionChromeLine($0) })
+            .max(by: { taskLineScore($0) < taskLineScore($1) }),
+           taskLineScore(bestLine) > 0 {
+            return String(bestLine.prefix(120))
+        }
+
+        let collapsed = lines
+            .map(cleanRecognizedTaskLine)
+            .filter { !$0.isEmpty && !isRecognitionChromeLine($0) }
+            .prefix(2)
             .joined(separator: " / ")
-        return String(collapsed.prefix(160))
+        return String(collapsed.prefix(120))
+    }
+
+    private func cleanRecognizedTaskLine(_ line: String) -> String {
+        line
+            .replacingOccurrences(of: "（已编辑）", with: "")
+            .replacingOccurrences(of: "(已编辑)", with: "")
+            .replacingOccurrences(of: "回复 ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func isRecognitionChromeLine(_ line: String) -> Bool {
+        let lowered = line.lowercased()
+        let chromeTokens = [
+            "飞书", "编辑", "窗口", "历史记录", "mira", "author_products", "知识库数据采集说明",
+            "yes", "ok", "get", "回复 于", "确认", "→"
+        ]
+        if chromeTokens.contains(where: { lowered.contains($0.lowercased()) }) && !looksLikeTaskLine(line) {
+            return true
+        }
+        if line.count <= 2 { return true }
+        if line.range(of: #"^[\W_]+$"#, options: .regularExpression) != nil { return true }
+        return false
+    }
+
+    private func looksLikeTaskLine(_ line: String) -> Bool {
+        let taskTokens = ["梳理", "跟进", "整理", "同步", "确认", "拉汪宇", "问题", "流程", "上线", "今天", "明天", "需要", "要不", "你把", "你要"]
+        return taskTokens.contains { line.contains($0) }
+    }
+
+    private func taskLineScore(_ line: String) -> Int {
+        var score = 0
+        if looksLikeTaskLine(line) { score += 8 }
+        if line.count >= 8 { score += 2 }
+        if line.count >= 16 { score += 2 }
+        if line.contains("飞书") || line.contains("窗口") || line.contains("历史记录") { score -= 12 }
+        if line.contains("知识库") || line.contains("author_products") { score -= 8 }
+        if line.count > 90 { score -= 2 }
+        return score
     }
 
     private func captureCurrentScreen() -> URL? {
@@ -1767,7 +1859,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let lines = (request.results ?? [])
                 .compactMap { $0.topCandidates(1).first?.string }
                 .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            return lines.prefix(8).joined(separator: "\n")
+            return lines.prefix(30).joined(separator: "\n")
         } catch {
             return ""
         }
@@ -1867,8 +1959,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func frameForCurrentMode() -> NSRect {
-        let expandedWidth = min(max(preferences.expandedPanelWidth, 420), 860)
-        let expandedHeight = min(max(preferences.expandedPanelHeight, 420), 940)
+        let expandedWidth = min(max(preferences.expandedPanelWidth, 300), 760)
+        let expandedHeight = min(max(preferences.expandedPanelHeight, 340), 860)
         let size = isExpanded ? NSSize(width: expandedWidth, height: expandedHeight) : NSSize(width: 120, height: 104)
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         return NSRect(
