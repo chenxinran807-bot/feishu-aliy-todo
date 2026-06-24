@@ -35,7 +35,7 @@ export function FullWindow({
           <p>Aime 小狗</p>
           <h1>下一件最重要的事</h1>
         </div>
-        <div className="context-pill">拖到飞书窗口：嗅探当前上下文</div>
+        <div className="context-pill">手动捕捉当前意图</div>
       </header>
 
       <section className="focus-card full-focus">

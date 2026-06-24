@@ -7,6 +7,13 @@ export function getVisibleOpenTasks(tasks: TaskViewModel[]): TaskViewModel[] {
     .sort((a, b) => b.meta.displayPriority - a.meta.displayPriority);
 }
 
+export function getCompletedTasks(tasks: TaskViewModel[]): TaskViewModel[] {
+  return tasks
+    .filter((task) => task.status === "done")
+    .filter((task) => !task.meta.hidden)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 export function getOverdueTasks(tasks: TaskViewModel[], now: Date): TaskViewModel[] {
   const today = toDateKey(now);
   return getVisibleOpenTasks(tasks).filter((task) => task.dueDate && task.dueDate < today);

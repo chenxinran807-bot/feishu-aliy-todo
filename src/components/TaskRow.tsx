@@ -8,35 +8,48 @@ interface TaskRowProps {
 }
 
 export function TaskRow({ task, onComplete, onTomorrow, onHide }: TaskRowProps) {
-  const isPrimary = task.meta.displayPriority <= 1 || task.title.includes("试穿");
+  const isDone = task.status === "done";
+  const isPrimary = !isDone && (task.meta.displayPriority <= 1 || task.title.includes("试穿"));
   const displayTitle = isPrimary ? "AI 试穿 - 迭代评测方案" : task.title;
 
   return (
-    <article className="task-row">
+    <article className={`task-row${isDone ? " task-row--done" : ""}`}>
       <button
         className="task-row__check"
         type="button"
-        onClick={() => onComplete(task.id)}
-        aria-label={`完成 ${displayTitle}`}
-      />
+        onClick={() => {
+          if (!isDone) onComplete(task.id);
+        }}
+        aria-label={isDone ? `已完成 ${displayTitle}` : `完成 ${displayTitle}`}
+        aria-pressed={isDone}
+        disabled={isDone}
+      >
+        {isDone ? "✓" : ""}
+      </button>
       <div>
         <h3>{displayTitle}</h3>
       </div>
       <div className="task-row__actions">
-        <button type="button" onClick={() => onComplete(task.id)}>
-          完成
-        </button>
-        {!isPrimary ? (
+        {isDone ? (
+          <span className="task-row__done-label">已完成</span>
+        ) : (
+          <button type="button" onClick={() => onComplete(task.id)}>
+            完成
+          </button>
+        )}
+        {!isDone && !isPrimary ? (
           <button type="button" onClick={() => onTomorrow(task.id)}>
             改时间
           </button>
         ) : null}
-        <button
-          className="task-row__quiet"
-          type="button"
-          onClick={() => onHide(task.id)}
-          aria-label={`暂时隐藏 ${displayTitle}`}
-        />
+        {!isDone ? (
+          <button
+            className="task-row__quiet"
+            type="button"
+            onClick={() => onHide(task.id)}
+            aria-label={`暂时隐藏 ${displayTitle}`}
+          />
+        ) : null}
       </div>
     </article>
   );

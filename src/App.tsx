@@ -6,6 +6,7 @@ import { defaultIntentSettings } from "./domain/intentTypes";
 import { computeTracks } from "./domain/progress";
 import {
   getLaterThisWeekTasks,
+  getCompletedTasks,
   getOverdueTasks,
   getTodayTasks,
   toDateKey,
@@ -52,8 +53,9 @@ export function App() {
     const overdueTasks = getOverdueTasks(taskViewModels, now);
     const todayTasks = getTodayTasks(taskViewModels, now);
     const laterTasks = getLaterThisWeekTasks(taskViewModels, now);
+    const completedTasks = getCompletedTasks(taskViewModels);
     const tracks = computeTracks(snapshot.tracks, snapshot.tasks).filter((track) => track.pinned);
-    return { taskViewModels, overdueTasks, todayTasks, laterTasks, tracks };
+    return { taskViewModels, overdueTasks, todayTasks, laterTasks, completedTasks, tracks };
   }, [snapshot]);
 
   const pendingSuggestions = useMemo(
@@ -71,9 +73,7 @@ export function App() {
 
   async function completeTask(taskId: string) {
     if (!view) return;
-    const task = view.taskViewModels.find((item) => item.id === taskId);
     setSnapshot(await desktopApi.completeTask(taskId));
-    await captureTaskAction("完成", task);
   }
 
   async function moveToTomorrow(taskId: string) {
@@ -157,6 +157,7 @@ export function App() {
         overdueTasks={view.overdueTasks}
         todayTasks={view.todayTasks}
         laterTasks={view.laterTasks}
+        completedTasks={view.completedTasks}
         tracks={view.tracks}
         suggestions={pendingSuggestions}
         onCollapse={() => {

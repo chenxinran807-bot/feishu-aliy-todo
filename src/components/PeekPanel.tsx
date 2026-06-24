@@ -8,6 +8,7 @@ interface PeekPanelProps {
   overdueTasks: TaskViewModel[];
   todayTasks: TaskViewModel[];
   laterTasks: TaskViewModel[];
+  completedTasks?: TaskViewModel[];
   tracks: ComputedProgressTrack[];
   suggestions?: ProactiveSuggestion[];
   onCollapse: () => void;
@@ -24,6 +25,7 @@ export function PeekPanel({
   overdueTasks,
   todayTasks,
   laterTasks,
+  completedTasks = [],
   tracks,
   suggestions = [],
   onCollapse,
@@ -44,6 +46,8 @@ export function PeekPanel({
   ]
     .filter((task): task is TaskViewModel => Boolean(task))
     .slice(0, 2);
+  const bottomTasks = completedTasks.slice(0, 3);
+  const rowTasks = [...visibleTasks, ...bottomTasks];
   const rewardName = tracks[0]?.name ?? "遛狗 +1";
   const p0Count = overdueTasks.length || (importantTask ? 1 : 0);
   const overdueCount = Math.max(2, overdueTasks.length);
@@ -57,7 +61,7 @@ export function PeekPanel({
           <p>Aime 小狗</p>
           <h1>下一件最重要的事</h1>
         </div>
-        <div className="context-pill">拖到飞书窗口：嗅探当前上下文</div>
+        <div className="context-pill">手动捕捉当前意图</div>
       </header>
 
       <section className="focus-card" aria-label="下一件最重要的事">
@@ -98,7 +102,7 @@ export function PeekPanel({
       ) : null}
 
       <section className="task-list" aria-label="待办事项">
-        {visibleTasks.length === 0 ? (
+        {rowTasks.length === 0 ? (
           <article className="task-row">
             <span className="task-row__check" aria-hidden="true" />
             <h3>今天已经清空</h3>
@@ -108,17 +112,16 @@ export function PeekPanel({
               </button>
             </div>
           </article>
-        ) : (
-          visibleTasks.map((task, index) => (
-            <TaskRow
-              key={`${task.id}-${index}`}
-              task={task}
-              onComplete={onComplete}
-              onTomorrow={onTomorrow}
-              onHide={onHide}
-            />
-          ))
-        )}
+        ) : null}
+        {rowTasks.map((task, index) => (
+          <TaskRow
+            key={`${task.id}-${index}`}
+            task={task}
+            onComplete={onComplete}
+            onTomorrow={onTomorrow}
+            onHide={onHide}
+          />
+        ))}
       </section>
 
       <footer className="peek-footer">

@@ -23,6 +23,20 @@ const p0Task: TaskViewModel = {
   },
 };
 
+const doneTask: TaskViewModel = {
+  ...p0Task,
+  id: "done-task",
+  larkRecordId: "rec-done",
+  title: "整理竞品信息",
+  status: "done",
+  meta: {
+    taskId: "done-task",
+    pinned: false,
+    hidden: false,
+    displayPriority: 0,
+  },
+};
+
 const tracks: ComputedProgressTrack[] = [
   {
     id: "walk",
@@ -100,8 +114,29 @@ describe("Aime companion redesign", () => {
     );
 
     expect(screen.getAllByText("下一件最重要的事")[0]).toBeInTheDocument();
-    expect(screen.getByText("拖到飞书窗口：嗅探当前上下文")).toBeInTheDocument();
+    expect(screen.getByText("手动捕捉当前意图")).toBeInTheDocument();
     expect(screen.getByText(/完成后遛狗 \+1/)).toBeInTheDocument();
     expect(screen.getByText("AI 试穿 - 迭代评测方案")).toBeInTheDocument();
+  });
+
+  it("keeps completed tasks checked and at the bottom", () => {
+    render(
+      <PeekPanel
+        overdueTasks={[p0Task]}
+        todayTasks={[]}
+        laterTasks={[]}
+        completedTasks={[doneTask]}
+        tracks={tracks}
+        onCollapse={() => undefined}
+        onComplete={() => undefined}
+        onTomorrow={() => undefined}
+        onHide={() => undefined}
+        onOpenFull={() => undefined}
+      />,
+    );
+
+    const rows = screen.getAllByRole("article");
+    expect(rows[rows.length - 1]).toHaveTextContent("整理竞品信息");
+    expect(screen.getByLabelText("已完成 整理竞品信息")).toBeInTheDocument();
   });
 });

@@ -59,4 +59,14 @@ describe("intentApi", () => {
 
     expect(snapshot.tasks.some((task) => task.title === "整理竞品信息" && task.sourceType === "manual")).toBe(true);
   });
+
+  it("completing a task does not create intent suggestions", async () => {
+    const snapshot = await desktopApi.getSnapshot();
+
+    await desktopApi.completeTask(snapshot.tasks[0].id);
+    const state = await intentApi.getState();
+
+    expect(state.events).toHaveLength(0);
+    expect(state.suggestions).toHaveLength(0);
+  });
 });

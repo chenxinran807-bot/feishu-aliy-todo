@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getLaterThisWeekTasks, getOverdueTasks, getTodayTasks } from "../domain/taskFilters";
+import {
+  getCompletedTasks,
+  getLaterThisWeekTasks,
+  getOverdueTasks,
+  getTodayTasks,
+} from "../domain/taskFilters";
 import type { TaskViewModel } from "../domain/types";
 
 const baseTask = {
@@ -47,5 +52,9 @@ describe("task filters", () => {
     expect(
       getLaterThisWeekTasks(tasks, new Date("2026-06-23T12:00:00+08:00")).map((task) => task.id),
     ).toEqual(["later"]);
+  });
+
+  it("returns completed visible tasks for bottom placement", () => {
+    expect(getCompletedTasks(tasks).map((task) => task.id)).toEqual(["done"]);
   });
 });

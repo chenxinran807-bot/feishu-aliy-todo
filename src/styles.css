@@ -269,6 +269,11 @@ button {
   background: rgba(255, 255, 255, 0.82);
 }
 
+.task-row--done {
+  opacity: 0.68;
+  background: rgba(255, 255, 255, 0.58);
+}
+
 .task-row__check {
   width: 48px;
   height: 48px;
@@ -278,12 +283,25 @@ button {
   background: transparent;
 }
 
+.task-row--done .task-row__check {
+  display: grid;
+  place-items: center;
+  border-color: #3f6f68;
+  background: #3f6f68;
+  color: #ffffff;
+}
+
 .task-row h3 {
   margin: 0;
   color: #3c3837;
   font-size: 30px;
   line-height: 1.15;
   font-weight: 900;
+}
+
+.task-row--done h3 {
+  color: #8a7a6b;
+  text-decoration: line-through;
 }
 
 .task-row__actions {
@@ -298,6 +316,13 @@ button {
   color: #936e4d;
   font-size: 25px;
   line-height: 1;
+}
+
+.task-row__done-label {
+  color: #7d6a58;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 850;
 }
 
 .task-row__quiet {
