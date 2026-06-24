@@ -124,6 +124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var activeTaskGroup: NativeTaskGroup?
     private var messageBanner: NSView?
     private var messageDismissWorkItem: DispatchWorkItem?
+    private var lastSyncDate: Date?
+    private var lastSyncSucceeded = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -221,6 +223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
         if preferences.displayStyle == "cute" {
+            rootStack.addArrangedSubview(syncStatusRow())
             if !usesCompactExpandedLayout() {
                 rootStack.addArrangedSubview(dogDenSummary(tasks: tasks))
             }
@@ -637,6 +640,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return button
     }
 
+    private func syncStatusRow() -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 6
+
+        let status = label(syncStatusText(), size: 11, weight: .medium, color: mutedColor())
+        status.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        row.addArrangedSubview(status)
+
+        row.addArrangedSubview(toolbarButton(title: "刷新", toolTip: "同步飞书 Base", action: #selector(refreshClicked)))
+        row.addArrangedSubview(toolbarButton(title: screenMonitorTimer == nil ? "实时" : "停止", toolTip: "定时识别当前屏幕待办", action: #selector(toggleScreenMonitor)))
+        row.addArrangedSubview(toolbarButton(title: "Base", toolTip: "打开飞书 Base", action: #selector(openAimeBase)))
+
+        return padded(row, width: contentWidth(), vertical: 4)
+    }
+
+    private func syncStatusText() -> String {
+        let monitorText = screenMonitorTimer == nil ? "实时识别关" : "实时识别开"
+        let syncText: String
+        if let lastSyncDate {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            syncText = "\(lastSyncSucceeded ? "已同步" : "同步失败") \(formatter.string(from: lastSyncDate))"
+        } else {
+            syncText = "等待同步"
+        }
+        return "飞书 Base · \(syncText) · \(monitorText)"
+    }
+
     private func menuButton(title: String, action: Selector, payload: String = "") -> AimeMenuButton {
         let button = AimeMenuButton(title: title, target: self, action: action)
         button.bezelStyle = .rounded
@@ -776,7 +809,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let openTasks = tasks.filter { isActionableStatus($0.status) }
         if openTasks.isEmpty {
-            stack.addArrangedSubview(card(label("今天已经清空", size: scaledCute(16), weight: .bold), width: contentWidth()))
+            stack.addArrangedSubview(emptyTaskStateView())
             return stack
         }
 
@@ -808,6 +841,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         stack.addArrangedSubview(scrollView)
         stack.addArrangedSubview(label("共 \(openTasks.count) 件，可上下滑动", size: scaledCute(12), weight: .semibold, color: mutedColor()))
         return stack
+    }
+
+    private func emptyTaskStateView() -> NSView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+
+        stack.addArrangedSubview(label("今天已经清空", size: scaledCute(16), weight: .semibold))
+        stack.addArrangedSubview(label("可以手动新增，也可以从飞书聊天或会议纪要里识别。", size: scaledCute(12), weight: .medium, color: mutedColor()))
+
+        let actions = NSStackView()
+        actions.orientation = .horizontal
+        actions.alignment = .centerY
+        actions.spacing = 8
+        actions.addArrangedSubview(toolbarButton(title: "新增", toolTip: "新增待办", action: #selector(addTaskClicked)))
+        actions.addArrangedSubview(toolbarButton(title: "识别屏幕", toolTip: "从当前屏幕识别待办", action: #selector(captureScreenClicked)))
+        stack.addArrangedSubview(actions)
+
+        return card(stack, width: contentWidth())
     }
 
     private func visibleTaskListHeight(for count: Int) -> CGFloat {
@@ -1665,8 +1718,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return "\(currentDirectory)/tmp/aime-tasks.json"
     }
 
-    private func pullLatestTasks() {
-        runSyncCommand(["pull", "--out", "tmp/aime-tasks.json"])
+    @discardableResult
+    private func pullLatestTasks() -> Bool {
+        let succeeded = runSyncCommand(["pull", "--out", "tmp/aime-tasks.json"])
+        lastSyncDate = Date()
+        lastSyncSucceeded = succeeded
+        if !succeeded, isExpanded {
+            showMessage("同步失败", detail: "没有成功从飞书 Base 拉取最新待办。")
+        }
+        return succeeded
     }
 
     @discardableResult
