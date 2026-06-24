@@ -1,6 +1,6 @@
+import type { ProactiveSuggestion } from "../domain/intentTypes";
 import type { ComputedProgressTrack, SyncState, TaskViewModel } from "../domain/types";
-import { ProgressTrack } from "./ProgressTrack";
-import { SyncBadge } from "./SyncBadge";
+import { DogPortrait } from "./DogPortrait";
 
 interface CollapsedWidgetProps {
   overdueCount: number;
@@ -9,8 +9,11 @@ interface CollapsedWidgetProps {
   tracks: ComputedProgressTrack[];
   syncState: SyncState;
   syncMessage?: string;
+  suggestions?: ProactiveSuggestion[];
   onExpand: () => void;
   onOpenFull: () => void;
+  onAcceptSuggestion?: (suggestionId: string) => void;
+  onDismissSuggestion?: (suggestionId: string) => void;
 }
 
 export function CollapsedWidget({
@@ -18,28 +21,43 @@ export function CollapsedWidget({
   todayCount,
   nextTask,
   tracks,
-  syncState,
-  syncMessage,
+  syncState: _syncState,
+  syncMessage: _syncMessage,
+  suggestions = [],
   onExpand,
   onOpenFull,
+  onAcceptSuggestion,
+  onDismissSuggestion,
 }: CollapsedWidgetProps) {
+  const foodCount = Math.max(1, overdueCount + todayCount);
+  const p0Count = nextTask?.title.includes("P0") ? 1 : Math.max(1, Math.min(3, todayCount));
+  const rewardLabel = tracks[0]?.name ?? "遛狗 +1";
+  const primarySuggestion = suggestions[0];
+
   return (
     <main className="widget-shell" onDoubleClick={onOpenFull}>
-      <button className="widget-main" type="button" onClick={onExpand}>
-        <span className="aime-orb">Ai</span>
-        <span>
-          <strong>
-            {todayCount} today · {overdueCount} overdue
-          </strong>
-          <small>{nextTask?.title ?? "No urgent task"}</small>
-        </span>
+      <button
+        className="widget-main"
+        type="button"
+        onClick={onExpand}
+        aria-label={`打开 Aime 小狗，下一件事：${nextTask?.title ?? "没有紧急任务"}`}
+      >
+        <DogPortrait size="compact" />
+        <strong>P0・{p0Count}</strong>
+        <small>{foodCount} 粒待领取狗粮</small>
+        <span className="compact-reward">{rewardLabel}</span>
       </button>
-      <div className="widget-tracks">
-        {tracks.slice(0, 2).map((track) => (
-          <ProgressTrack key={track.id} track={track} />
-        ))}
-      </div>
-      <SyncBadge state={syncState} message={syncMessage} />
+      {primarySuggestion ? (
+        <div className="widget-nudge" aria-label="主动建议">
+          <span>{primarySuggestion.body}</span>
+          <button type="button" onClick={() => onAcceptSuggestion?.(primarySuggestion.id)}>
+            {primarySuggestion.suggestedAction.label}
+          </button>
+          <button type="button" onClick={() => onDismissSuggestion?.(primarySuggestion.id)}>
+            忽略
+          </button>
+        </div>
+      ) : null}
     </main>
   );
 }

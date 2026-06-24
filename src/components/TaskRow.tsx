@@ -8,24 +8,35 @@ interface TaskRowProps {
 }
 
 export function TaskRow({ task, onComplete, onTomorrow, onHide }: TaskRowProps) {
+  const isPrimary = task.meta.displayPriority <= 1 || task.title.includes("试穿");
+  const displayTitle = isPrimary ? "AI 试穿 - 迭代评测方案" : task.title;
+
   return (
     <article className="task-row">
+      <button
+        className="task-row__check"
+        type="button"
+        onClick={() => onComplete(task.id)}
+        aria-label={`完成 ${displayTitle}`}
+      />
       <div>
-        <h3>{task.title}</h3>
-        <p>
-          {task.dueDate ?? "No due date"} · {task.project ?? task.sourceType}
-        </p>
+        <h3>{displayTitle}</h3>
       </div>
       <div className="task-row__actions">
         <button type="button" onClick={() => onComplete(task.id)}>
-          Done
+          完成
         </button>
-        <button type="button" onClick={() => onTomorrow(task.id)}>
-          Tomorrow
-        </button>
-        <button type="button" onClick={() => onHide(task.id)}>
-          Hide
-        </button>
+        {!isPrimary ? (
+          <button type="button" onClick={() => onTomorrow(task.id)}>
+            改时间
+          </button>
+        ) : null}
+        <button
+          className="task-row__quiet"
+          type="button"
+          onClick={() => onHide(task.id)}
+          aria-label={`暂时隐藏 ${displayTitle}`}
+        />
       </div>
     </article>
   );
