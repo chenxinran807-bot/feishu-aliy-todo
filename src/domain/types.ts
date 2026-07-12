@@ -8,13 +8,25 @@ export interface SyncedTask {
   larkRecordId: string;
   title: string;
   sourceType: SourceType;
+  sourceTypes?: SourceType[];
   sourceUrl?: string;
   status: TaskStatus;
+  statusText?: string;
   dueDate?: string;
   createdAt: string;
   updatedAt: string;
   owner?: string;
   project?: string;
+  priority?: string;
+  details?: string;
+  sourceExcerpt?: string;
+  result?: string;
+  updateRecord?: string;
+  larkTaskGuid?: string;
+  larkTaskUrl?: string;
+  syncStatus?: string;
+  sourceId?: string;
+  parentRecordId?: string;
 }
 
 export interface LocalTaskMeta {
@@ -53,6 +65,8 @@ export interface ComputedProgressTrack extends ProgressTrack {
 export interface CompanionSettings {
   widgetX: number;
   widgetY: number;
+  widgetWidth?: number;
+  widgetHeight?: number;
   miniMode: boolean;
   reminderHour: number;
   larkBaseUrl?: string;

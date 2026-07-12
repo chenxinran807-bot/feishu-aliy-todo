@@ -1,9 +1,26 @@
+import { useMemo, useState } from "react";
 import type { CaptureIntentEventInput, IntentSettings } from "../domain/intentTypes";
-import { toDateKey } from "../domain/taskFilters";
-import type { AppSnapshot, ComputedProgressTrack } from "../domain/types";
-import { DogPortrait } from "./DogPortrait";
+import type { AppSnapshot, ComputedProgressTrack, TaskViewModel } from "../domain/types";
+import { getCompletedTasks, getLaterThisWeekTasks, getOverdueTasks, getTodayTasks, getVisibleOpenTasks } from "../domain/taskFilters";
+import { Sidebar, type CategoryKey } from "./Sidebar";
+import { MainContent } from "./MainContent";
 import { ManualCaptureForm } from "./ManualCaptureForm";
 import { SuggestionSettings } from "./SuggestionSettings";
+
+interface FullWindowProps {
+  snapshot: AppSnapshot;
+  tracks: ComputedProgressTrack[];
+  intentSettings?: IntentSettings;
+  intentEventCount?: number;
+  intentSuggestionCount?: number;
+  onCompleteTask?: (taskId: string) => void;
+  onReopenTask?: (taskId: string) => void;
+  onRescheduleTask?: (taskId: string, date: string) => void;
+  onHideTask?: (taskId: string) => void;
+  onCaptureIntent?: (input: CaptureIntentEventInput) => void;
+  onUpdateIntentSettings?: (settings: Partial<IntentSettings>) => void;
+  onClearIntentHistory?: () => void;
+}
 
 export function FullWindow({
   snapshot,
@@ -11,94 +28,96 @@ export function FullWindow({
   intentSettings,
   intentEventCount = 0,
   intentSuggestionCount = 0,
+  onCompleteTask,
+  onReopenTask,
+  onRescheduleTask,
+  onHideTask,
   onCaptureIntent,
   onUpdateIntentSettings,
   onClearIntentHistory,
-}: {
-  snapshot: AppSnapshot;
-  tracks: ComputedProgressTrack[];
-  intentSettings?: IntentSettings;
-  intentEventCount?: number;
-  intentSuggestionCount?: number;
-  onCaptureIntent?: (input: CaptureIntentEventInput) => void;
-  onUpdateIntentSettings?: (settings: Partial<IntentSettings>) => void;
-  onClearIntentHistory?: () => void;
-}) {
-  const openTasks = snapshot.tasks.filter((task) => task.status === "open");
-  const primaryTask = openTasks[0];
-  const rewardName = tracks[0]?.name ?? "遛狗 +1";
-  const today = toDateKey(new Date());
-  const p0Count = openTasks.filter((task) => task.title.includes("P0") || task.title.includes("p0"))
-    .length;
-  const overdueCount = openTasks.filter((task) => task.dueDate && task.dueDate < today).length;
-  const foodCount = openTasks.length;
+}: FullWindowProps) {
+  const [activeCategory, setActiveCategory] = useState<CategoryKey>("today");
+
+  const taskViewModels: TaskViewModel[] = useMemo(() => {
+    return snapshot.tasks.map((task) => ({
+      ...task,
+      meta: snapshot.localMeta.find((meta) => meta.taskId === task.id) ?? {
+        taskId: task.id,
+        pinned: false,
+        hidden: false,
+        displayPriority: 0,
+      },
+    }));
+  }, [snapshot]);
+
+  const now = new Date();
+  const visibleOpenTasks = getVisibleOpenTasks(taskViewModels);
+  const overdueTasks = getOverdueTasks(taskViewModels, now);
+  const todayTasks = getTodayTasks(taskViewModels, now);
+  const laterTasks = getLaterThisWeekTasks(taskViewModels, now);
+  const completedTasks = getCompletedTasks(taskViewModels);
+
+  const displayedTasks = useMemo(() => {
+    switch (activeCategory) {
+      case "today":
+        return [...overdueTasks, ...todayTasks];
+      case "planned":
+        return laterTasks;
+      case "completed":
+        return completedTasks;
+      case "all":
+      default:
+        return visibleOpenTasks;
+    }
+  }, [activeCategory, overdueTasks, todayTasks, laterTasks, completedTasks, visibleOpenTasks]);
+
+  function tomorrowDateKey(): string {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const year = tomorrow.getFullYear();
+    const month = `${tomorrow.getMonth() + 1}`.padStart(2, "0");
+    const day = `${tomorrow.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
 
   return (
-    <main className="full-window">
-      <header className="peek-hero full-hero">
-        <DogPortrait size="hero" />
-        <div className="peek-title">
-          <p>Aime 小狗</p>
-          <h1>下一件最重要的事</h1>
-        </div>
-        <div className="context-pill">手动捕捉当前意图</div>
-      </header>
-
-      <section className="focus-card full-focus">
-        <p className="section-label">下一件最重要的事</p>
-        <h2>{primaryTask?.title ?? "现在没有紧急任务"}</h2>
-        <p className="focus-meta">
-          {primaryTask?.project ?? "AI探索"} · 今天 18:00 · 完成后遛狗 +1
-        </p>
-        <div className="stats-grid">
-          {p0Count > 0 ? (
-            <div className="stats-card">
-              <strong>{p0Count}</strong>
-              <span>P0</span>
-            </div>
-          ) : null}
-          {overdueCount > 0 ? (
-            <div className="stats-card">
-              <strong>{overdueCount}</strong>
-              <span>逾期</span>
-            </div>
-          ) : null}
-          {foodCount > 0 ? (
-            <div className="stats-card">
-              <strong>{foodCount}</strong>
-              <span>待领取狗粮</span>
-            </div>
-          ) : null}
-        </div>
-        <div className="reward-callout">{rewardName}：完成一件后，小狗出门散步中。</div>
-      </section>
-
-      <section className="full-grid">
-        {openTasks.slice(0, 3).map((task, index) => (
-          <article key={task.id}>
-            <span className="task-row__check" aria-hidden="true" />
-            <div>
-              <h2>{index === 0 ? "AI 试穿 - 迭代评测方案" : task.title}</h2>
-              <p>{task.project ?? "AI探索"}</p>
-            </div>
-          </article>
-        ))}
-      </section>
-
-      {onCaptureIntent ? (
-        <section className="full-grid intent-grid">
-          <ManualCaptureForm onCapture={onCaptureIntent} />
-          {intentSettings && onUpdateIntentSettings && onClearIntentHistory ? (
-            <SuggestionSettings
-              settings={intentSettings}
-              eventCount={intentEventCount}
-              suggestionCount={intentSuggestionCount}
-              onUpdateSettings={onUpdateIntentSettings}
-              onClearHistory={onClearIntentHistory}
-            />
-          ) : null}
-        </section>
-      ) : null}
-    </main>
+    <div className="app-shell full-window">
+      <Sidebar
+        activeCategory={activeCategory}
+        onSelectCategory={setActiveCategory}
+        todayCount={overdueTasks.length + todayTasks.length}
+        plannedCount={laterTasks.length}
+        allCount={visibleOpenTasks.length}
+        completedCount={completedTasks.length}
+        listCount={visibleOpenTasks.length}
+        listLabel={snapshot.settings.larkBaseUrl ? "飞书待办" : "提醒事项"}
+        track={tracks[0] ? { name: tracks[0].name, displayPercent: tracks[0].displayPercent } : undefined}
+        tools={
+          onCaptureIntent || (intentSettings && onUpdateIntentSettings && onClearIntentHistory) ? (
+            <>
+              {onCaptureIntent ? <ManualCaptureForm onCapture={onCaptureIntent} /> : null}
+              {intentSettings && onUpdateIntentSettings && onClearIntentHistory ? (
+                <SuggestionSettings
+                  settings={intentSettings}
+                  eventCount={intentEventCount}
+                  suggestionCount={intentSuggestionCount}
+                  onUpdateSettings={onUpdateIntentSettings}
+                  onClearHistory={onClearIntentHistory}
+                />
+              ) : null}
+            </>
+          ) : undefined
+        }
+      />
+      <MainContent
+        activeCategory={activeCategory}
+        tasks={displayedTasks}
+        completedCount={completedTasks.length}
+        onComplete={onCompleteTask}
+        onReopen={onReopenTask}
+        onTomorrow={(taskId) => onRescheduleTask?.(taskId, tomorrowDateKey())}
+        onHide={onHideTask}
+      />
+    </div>
   );
 }

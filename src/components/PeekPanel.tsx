@@ -1,9 +1,8 @@
-import { useState, type RefObject } from "react";
+import { useMemo, useState } from "react";
 import type { ProactiveSuggestion } from "../domain/intentTypes";
 import type { ComputedProgressTrack, TaskViewModel } from "../domain/types";
-import { DogPortrait } from "./DogPortrait";
-import { SuggestionCard } from "./SuggestionCard";
 import { TaskRow } from "./TaskRow";
+import { SuggestionCard } from "./SuggestionCard";
 
 interface PeekPanelProps {
   overdueTasks: TaskViewModel[];
@@ -18,27 +17,10 @@ interface PeekPanelProps {
   onTomorrow: (taskId: string) => void;
   onHide: (taskId: string) => void;
   onOpenFull: () => void;
-  onShowTasks?: () => void;
-  taskListRef?: RefObject<HTMLElement | null>;
-  taskListHighlighted?: boolean;
+  onSetWindowSize?: (width: number, height: number) => void;
   onAcceptSuggestion?: (suggestionId: string) => void;
   onDismissSuggestion?: (suggestionId: string) => void;
   onNeverSuggestType?: (suggestionId: string) => void;
-}
-
-type TaskStatGroup = "p0" | "overdue" | "open";
-
-function uniqueTasks(tasks: TaskViewModel[]): TaskViewModel[] {
-  const seen = new Set<string>();
-  return tasks.filter((task) => {
-    if (seen.has(task.id)) return false;
-    seen.add(task.id);
-    return true;
-  });
-}
-
-function isP0Task(task: TaskViewModel): boolean {
-  return task.title.includes("P0") || task.title.includes("p0");
 }
 
 export function PeekPanel({
@@ -54,150 +36,113 @@ export function PeekPanel({
   onTomorrow,
   onHide,
   onOpenFull,
-  onShowTasks,
-  taskListRef,
-  taskListHighlighted = false,
+  onSetWindowSize = () => undefined,
   onAcceptSuggestion = () => undefined,
   onDismissSuggestion = () => undefined,
   onNeverSuggestType = () => undefined,
 }: PeekPanelProps) {
-  const [activeStatGroup, setActiveStatGroup] = useState<TaskStatGroup | null>(null);
-  const importantTask = overdueTasks[0] ?? todayTasks[0] ?? laterTasks[0];
-  const allOpenTasks = uniqueTasks([...overdueTasks, ...todayTasks, ...laterTasks]);
-  const p0Tasks = allOpenTasks.filter(isP0Task);
-  const visibleTasks = uniqueTasks(
-    [
-      importantTask,
-      ...todayTasks,
-      ...laterTasks,
-      ...overdueTasks.slice(1),
-    ].filter((task): task is TaskViewModel => Boolean(task)),
-  ).slice(0, 2);
-  const bottomTasks = completedTasks.slice(0, 3);
-  const activeTasks =
-    activeStatGroup === "p0"
-      ? p0Tasks
-      : activeStatGroup === "overdue"
-        ? overdueTasks
-        : activeStatGroup === "open"
-          ? allOpenTasks
-          : visibleTasks;
-  const rowTasks = [...activeTasks, ...bottomTasks];
-  const rewardName = tracks[0]?.name ?? "遛狗 +1";
-  const p0Count = p0Tasks.length;
-  const overdueCount = overdueTasks.length;
-  const foodCount = allOpenTasks.length;
+  const [showCompleted, setShowCompleted] = useState(false);
 
-  function showTaskGroup(group: TaskStatGroup) {
-    setActiveStatGroup(group);
-    onShowTasks?.();
-  }
+  const allOpen = useMemo(
+    () => [...overdueTasks, ...todayTasks, ...laterTasks],
+    [overdueTasks, todayTasks, laterTasks],
+  );
+
+  const displayTasks = showCompleted ? completedTasks : [...allOpen, ...completedTasks];
+  const title = showCompleted ? "完成" : "今天";
+  const titleColor = showCompleted ? "gray" : "blue";
+  const totalCompleted = completedTasks.length;
 
   return (
     <main className="peek-panel">
-      <header className="peek-hero">
-        <DogPortrait size="hero" as="button" onClick={onCollapse} ariaLabel="收起 Aime 小狗" />
-        <div className="peek-title">
-          <p>Aime 小狗</p>
-          <h1>下一件最重要的事</h1>
+      <header className="peek-panel__header">
+        <h1 className={`peek-panel__title main-header__title--${titleColor}`}>{title}</h1>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" className="peek-panel__close" onClick={onOpenFull} aria-label="打开完整窗口">
+            ⤢
+          </button>
+          <button type="button" className="peek-panel__close" onClick={onCollapse} aria-label="收起">
+            ×
+          </button>
         </div>
-        <div className="context-pill">手动捕捉当前意图</div>
       </header>
 
-      <section className="focus-card" aria-label="下一件最重要的事">
-        <p className="section-label">下一件最重要的事</p>
-        <h2>{importantTask?.title ?? "现在没有紧急任务"}</h2>
-        <p className="focus-meta">
-          {importantTask?.project ?? "AI探索"} · 今天 18:00 · 完成后遛狗 +1
-        </p>
-        <div className="stats-grid" aria-label="任务概览">
-          {p0Count > 0 ? (
-            <button
-              className="stats-card stats-card--button"
-              type="button"
-              onClick={() => showTaskGroup("p0")}
-              aria-label={`展开 P0 待办，${p0Count} 件`}
-            >
-              <strong>{p0Count}</strong>
-              <span>P0</span>
-            </button>
-          ) : null}
-          {overdueCount > 0 ? (
-            <button
-              className="stats-card stats-card--button"
-              type="button"
-              onClick={() => showTaskGroup("overdue")}
-              aria-label={`展开逾期待办，${overdueCount} 件`}
-            >
-              <strong>{overdueCount}</strong>
-              <span>逾期</span>
-            </button>
-          ) : null}
-          {foodCount > 0 ? (
-            <button
-              className="stats-card stats-card--button"
-              type="button"
-              onClick={() => showTaskGroup("open")}
-              aria-label={`展开全部待办，${foodCount} 粒待领取狗粮`}
-            >
-              <strong>{foodCount}</strong>
-              <span>待领取狗粮</span>
-            </button>
-          ) : null}
-        </div>
-        <div className="reward-callout">{rewardName}：完成一件后，小狗出门散步中。</div>
-      </section>
+      <div className="peek-panel__meta">
+        {showCompleted
+          ? `${totalCompleted} 项完成`
+          : `${allOpen.length} 项待办${totalCompleted > 0 ? ` · ${totalCompleted} 项完成` : ""}`}
+        <button
+          type="button"
+          style={{
+            marginLeft: 12,
+            color: "var(--accent-blue)",
+            fontWeight: 600,
+          }}
+          onClick={() => setShowCompleted((v) => !v)}
+        >
+          {showCompleted ? "显示待办" : "显示已完成"}
+        </button>
+      </div>
 
-      {suggestions.length > 0 ? (
-        <section className="task-list suggestion-list" aria-label="主动建议">
-          {suggestions.map((suggestion) => (
-            <SuggestionCard
-              key={suggestion.id}
-              suggestion={suggestion}
-              onAccept={onAcceptSuggestion}
-              onDismiss={onDismissSuggestion}
-              onNeverSuggest={onNeverSuggestType}
-            />
-          ))}
-        </section>
-      ) : null}
+      <div className="size-presets" aria-label="面板尺寸">
+        <button type="button" aria-label="小尺寸" onClick={() => onSetWindowSize(320, 220)}>小</button>
+        <button type="button" aria-label="标准尺寸" onClick={() => onSetWindowSize(360, 260)}>标准</button>
+        <button type="button" aria-label="大尺寸" onClick={() => onSetWindowSize(480, 420)}>大</button>
+      </div>
 
-      <section
-        ref={taskListRef}
-        className={`task-list${taskListHighlighted ? " task-list--highlighted" : ""}`}
-        aria-label="待办事项"
-      >
-        {rowTasks.length === 0 ? (
-          <article className="task-row">
-            <span className="task-row__check" aria-hidden="true" />
-            <h3>今天已经清空</h3>
-            <div className="task-row__actions">
-              <button type="button" onClick={onOpenFull}>
-                查看
-              </button>
-            </div>
-          </article>
+      <div className="peek-panel__scroll">
+        {!showCompleted ? (
+          <div className="add-task-row">
+            <span className="add-task-row__circle" />
+            <input type="text" placeholder="添加新任务…" aria-label="添加新任务" />
+          </div>
         ) : null}
-        {rowTasks.map((task, index) => (
-          <TaskRow
-            key={`${task.id}-${index}`}
-            task={task}
-            onComplete={onComplete}
-            onReopen={onReopen}
-            onTomorrow={onTomorrow}
-            onHide={onHide}
-          />
-        ))}
-      </section>
 
-      <footer className="peek-footer">
-        <button type="button" onClick={onOpenFull}>
-          打开管理
-        </button>
-        <button type="button" onClick={onCollapse}>
-          收起
-        </button>
-      </footer>
+        {suggestions.length > 0 && !showCompleted ? (
+          <section style={{ margin: "12px 0" }} aria-label="主动建议">
+            {suggestions.map((suggestion) => (
+              <SuggestionCard
+                key={suggestion.id}
+                suggestion={suggestion}
+                onAccept={onAcceptSuggestion}
+                onDismiss={onDismissSuggestion}
+                onNeverSuggest={onNeverSuggestType}
+              />
+            ))}
+          </section>
+        ) : null}
+
+        {displayTasks.length === 0 ? (
+          <div className="empty-state" style={{ minHeight: 200 }}>
+            {showCompleted ? "没有已完成事项" : "没有提醒事项"}
+          </div>
+        ) : (
+          <div className="task-list" role="list">
+            {displayTasks.map((task) => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                onComplete={onComplete}
+                onReopen={onReopen}
+                onTomorrow={onTomorrow}
+                onHide={onHide}
+              />
+            ))}
+          </div>
+        )}
+
+        {tracks.length > 0 ? (
+          <div className="progress-track" style={{ marginTop: 16 }}>
+            <div className="progress-track__header">
+              <span>{tracks[0].name}</span>
+              <span>{tracks[0].displayPercent}%</span>
+            </div>
+            <div className="progress-track__bar">
+              <span style={{ width: `${tracks[0].displayPercent}%` }} />
+            </div>
+          </div>
+        ) : null}
+      </div>
     </main>
   );
 }

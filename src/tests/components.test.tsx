@@ -42,7 +42,7 @@ const doneTask: TaskViewModel = {
 const tracks: ComputedProgressTrack[] = [
   {
     id: "walk",
-    name: "遛狗 +1",
+    name: "桌面待办进度",
     linkedTaskIds: ["p0"],
     mode: "auto",
     autoPercent: 0,
@@ -81,7 +81,7 @@ describe("ProgressTrack", () => {
 });
 
 describe("Aime companion redesign", () => {
-  it("shows the compact dog-food widget copy", () => {
+  it("shows the compact widget copy", () => {
     render(
       <CollapsedWidget
         overdueCount={2}
@@ -94,15 +94,14 @@ describe("Aime companion redesign", () => {
       />,
     );
 
-    expect(screen.getByText("P0・1")).toBeInTheDocument();
-    expect(screen.getByText("3 粒待领取狗粮")).toBeInTheDocument();
-    expect(screen.getByText("🐶")).toBeInTheDocument();
-    expect(document.querySelector(".dog-face")).not.toBeInTheDocument();
+    const widgetMain = document.querySelector(".widget-main");
+    expect(widgetMain?.querySelector("strong")?.textContent).toBe("3");
+    expect(widgetMain?.querySelector("small")?.textContent).toBe("3 件待办");
+    expect(screen.queryByText("🐶")).not.toBeInTheDocument();
+    expect(screen.getByText("P0・评审迭代方案")).toBeInTheDocument();
   });
 
-  it("shows the reference expanded panel copy", () => {
-    const showTasks = vi.fn();
-
+  it("shows the peek panel in Reminders style", () => {
     render(
       <PeekPanel
         overdueTasks={[p0Task]}
@@ -114,19 +113,19 @@ describe("Aime companion redesign", () => {
         onTomorrow={() => undefined}
         onHide={() => undefined}
         onOpenFull={() => undefined}
-        onShowTasks={showTasks}
+        onSetWindowSize={() => undefined}
       />,
     );
 
-    expect(screen.getAllByText("下一件最重要的事")[0]).toBeInTheDocument();
-    expect(screen.getByText("手动捕捉当前意图")).toBeInTheDocument();
-    expect(screen.getByText(/完成后遛狗 \+1/)).toBeInTheDocument();
-    expect(screen.getAllByText("P0・评审迭代方案")[0]).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "展开全部待办，1 粒待领取狗粮" }));
-    expect(showTasks).toHaveBeenCalled();
+    expect(screen.getByText("今天")).toBeInTheDocument();
+    expect(screen.getByText("P0・评审迭代方案")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "小尺寸" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "标准尺寸" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "大尺寸" })).toBeInTheDocument();
+    expect(screen.getByLabelText("完成 P0・评审迭代方案")).toBeInTheDocument();
   });
 
-  it("lets each visible stat jump to its task group", () => {
+  it("lists today and completed tasks in the peek panel", () => {
     const overdueTask: TaskViewModel = {
       ...p0Task,
       id: "overdue",
@@ -156,43 +155,36 @@ describe("Aime companion redesign", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "展开 P0 待办，1 件" }));
-    expect(screen.getByLabelText("待办事项")).toHaveTextContent("P0・评审迭代方案");
-    expect(screen.getByLabelText("待办事项")).not.toHaveTextContent("逾期材料整理");
-
-    fireEvent.click(screen.getByRole("button", { name: "展开逾期待办，1 件" }));
-    expect(screen.getByLabelText("待办事项")).toHaveTextContent("逾期材料整理");
-    expect(screen.getByLabelText("待办事项")).not.toHaveTextContent("普通待办");
-
-    fireEvent.click(screen.getByRole("button", { name: "展开全部待办，3 粒待领取狗粮" }));
-    expect(screen.getByLabelText("待办事项")).toHaveTextContent("普通待办");
+    const taskList = screen.getByRole("list");
+    expect(taskList).toHaveTextContent("逾期材料整理");
+    expect(taskList).toHaveTextContent("P0・评审迭代方案");
+    expect(taskList).toHaveTextContent("普通待办");
   });
 
-  it("hides empty P0 and overdue stat cards", () => {
-    const normalTask: TaskViewModel = {
-      ...p0Task,
-      id: "normal",
-      title: "普通待办",
-      meta: { ...p0Task.meta, taskId: "normal", displayPriority: 0 },
-    };
-
+  it("renders the full window in a two-pane Reminders layout", () => {
     render(
-      <PeekPanel
-        overdueTasks={[]}
-        todayTasks={[normalTask]}
-        laterTasks={[]}
+      <FullWindow
+        snapshot={{
+          syncState: "idle",
+          tasks: [p0Task],
+          localMeta: [],
+          tracks: [],
+          settings: {
+            widgetX: 0,
+            widgetY: 0,
+            miniMode: false,
+            reminderHour: 9,
+          },
+        }}
         tracks={tracks}
-        onCollapse={() => undefined}
-        onComplete={() => undefined}
-        onTomorrow={() => undefined}
-        onHide={() => undefined}
-        onOpenFull={() => undefined}
       />,
     );
 
-    expect(screen.queryByText("P0")).not.toBeInTheDocument();
-    expect(screen.queryByText("逾期")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "展开全部待办，1 粒待领取狗粮" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "分类" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "我的列表" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "今天", level: 1 })).toBeInTheDocument();
+    expect(screen.getAllByText("全部").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("完成").length).toBeGreaterThanOrEqual(1);
   });
 
   it("uses the checkbox as the only task completion control", () => {
@@ -234,8 +226,8 @@ describe("Aime companion redesign", () => {
       />,
     );
 
-    expect(screen.queryByText("完成")).not.toBeInTheDocument();
-    expect(screen.queryByText("改时间")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "完成" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "改时间" })).not.toBeInTheDocument();
   });
 
   it("keeps completed tasks checked and at the bottom", () => {
@@ -257,7 +249,7 @@ describe("Aime companion redesign", () => {
       />,
     );
 
-    const rows = screen.getAllByRole("article");
+    const rows = screen.getAllByRole("listitem");
     expect(rows[rows.length - 1]).toHaveTextContent("整理竞品信息");
     fireEvent.click(screen.getByLabelText("取消完成 整理竞品信息"));
     expect(reopenTask).toHaveBeenCalledWith("done-task");
@@ -350,11 +342,7 @@ describe("Aime companion redesign", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "加入待办" }));
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "展开全部待办，3 粒待领取狗粮" })).toBeInTheDocument();
+      expect(screen.getByText("周五前整理渠道清单")).toBeInTheDocument();
     });
-
-    fireEvent.click(screen.getByRole("button", { name: "展开全部待办，3 粒待领取狗粮" }));
-
-    expect(await screen.findByText("周五前整理渠道清单")).toBeInTheDocument();
   });
 });

@@ -8,6 +8,16 @@ export interface LarkFieldMapping {
   sourceUrl?: string;
   owner?: string;
   project?: string;
+  priority?: string;
+  details?: string;
+  sourceExcerpt?: string;
+  result?: string;
+  updateRecord?: string;
+  larkTaskGuid?: string;
+  larkTaskUrl?: string;
+  syncStatus?: string;
+  sourceId?: string;
+  parentRecordId?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -23,18 +33,32 @@ export interface LarkWritePatch {
 }
 
 export function mapLarkRecordToTask(record: LarkRecord, mapping: LarkFieldMapping): SyncedTask {
+  const sourceTypes = asSourceTypes(readOptional(record, mapping.sourceType));
+  const fallbackSourceTypes = sourceTypes.length > 0 ? sourceTypes : ["manual"];
   return {
     id: record.record_id,
     larkRecordId: record.record_id,
     title: asText(record.fields[mapping.title]) || "Untitled task",
-    sourceType: asSourceType(readOptional(record, mapping.sourceType)) ?? "manual",
+    sourceType: fallbackSourceTypes[0] as SourceType,
+    sourceTypes: fallbackSourceTypes as SourceType[],
     sourceUrl: asText(readOptional(record, mapping.sourceUrl)) || undefined,
     status: asTaskStatus(record.fields[mapping.status]),
+    statusText: asText(record.fields[mapping.status]) || undefined,
     dueDate: asDateKey(record.fields[mapping.dueDate]),
     createdAt: asIsoDate(readOptional(record, mapping.createdAt)) ?? new Date().toISOString(),
     updatedAt: asIsoDate(readOptional(record, mapping.updatedAt)) ?? new Date().toISOString(),
     owner: asText(readOptional(record, mapping.owner)) || undefined,
     project: asText(readOptional(record, mapping.project)) || undefined,
+    priority: asPriority(readOptional(record, mapping.priority)) || undefined,
+    details: asText(readOptional(record, mapping.details)) || undefined,
+    sourceExcerpt: asText(readOptional(record, mapping.sourceExcerpt)) || undefined,
+    result: asText(readOptional(record, mapping.result)) || undefined,
+    updateRecord: asText(readOptional(record, mapping.updateRecord)) || undefined,
+    larkTaskGuid: asText(readOptional(record, mapping.larkTaskGuid)) || undefined,
+    larkTaskUrl: asText(readOptional(record, mapping.larkTaskUrl)) || undefined,
+    syncStatus: asText(readOptional(record, mapping.syncStatus)) || undefined,
+    sourceId: asText(readOptional(record, mapping.sourceId)) || undefined,
+    parentRecordId: asText(readOptional(record, mapping.parentRecordId)) || undefined,
   };
 }
 
@@ -85,12 +109,27 @@ function asTaskStatus(value: unknown): TaskStatus {
 function asSourceType(value: unknown): SourceType | undefined {
   const text = asText(value).toLowerCase();
   if (!text) return undefined;
-  if (text.includes("meeting") || text.includes("会议")) return "meeting_note";
+  if (text.includes("meeting") || text.includes("会议") || text.includes("纪要")) return "meeting_note";
   if (text.includes("private") || text.includes("私聊")) return "private_chat";
   if (text.includes("group") || text.includes("群") || text.includes("chat") || text.includes("聊天")) {
     return "group_chat";
   }
+  if (text.includes("codex") || text.includes("唤起") || text.includes("主动")) return "manual";
   return "manual";
+}
+
+function asSourceTypes(value: unknown): SourceType[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => asSourceType(item) ?? "manual").filter(Boolean);
+  }
+  const single = asSourceType(value);
+  return single ? [single] : [];
+}
+
+function asPriority(value: unknown): string | undefined {
+  const text = asText(value).toUpperCase();
+  const match = text.match(/\bP[0-3]\b/);
+  return match?.[0];
 }
 
 function asDateKey(value: unknown): string | undefined {

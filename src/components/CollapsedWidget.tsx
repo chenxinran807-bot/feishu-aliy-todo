@@ -1,6 +1,5 @@
 import type { ProactiveSuggestion } from "../domain/intentTypes";
 import type { ComputedProgressTrack, SyncState, TaskViewModel } from "../domain/types";
-import { DogPortrait } from "./DogPortrait";
 
 interface CollapsedWidgetProps {
   overdueCount: number;
@@ -29,10 +28,9 @@ export function CollapsedWidget({
   onAcceptSuggestion,
   onDismissSuggestion,
 }: CollapsedWidgetProps) {
-  const foodCount = Math.max(1, overdueCount + todayCount);
-  const p0Count = nextTask?.title.includes("P0") ? 1 : Math.max(1, Math.min(3, todayCount));
-  const rewardLabel = tracks[0]?.name ?? "遛狗 +1";
+  const total = overdueCount + todayCount;
   const primarySuggestion = suggestions[0];
+  const displayTitle = nextTask?.title ?? "没有待办";
 
   return (
     <main className="widget-shell" onDoubleClick={onOpenFull}>
@@ -40,12 +38,11 @@ export function CollapsedWidget({
         className="widget-main"
         type="button"
         onClick={onExpand}
-        aria-label={`打开 Aime 小狗，下一件事：${nextTask?.title ?? "没有紧急任务"}`}
+        aria-label={`打开神仙待办，下一件事：${displayTitle}`}
       >
-        <DogPortrait size="compact" />
-        <strong>P0・{p0Count}</strong>
-        <small>{foodCount} 粒待领取狗粮</small>
-        <span className="compact-reward">{rewardLabel}</span>
+        <strong>{total}</strong>
+        <small>{total} 件待办</small>
+        <span className="widget-next-task">{displayTitle}</span>
       </button>
       {primarySuggestion ? (
         <div className="widget-nudge" aria-label="主动建议">

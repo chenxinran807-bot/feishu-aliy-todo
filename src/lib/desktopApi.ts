@@ -10,6 +10,7 @@ import { defaultIntentSettings, emptyIntentState } from "../domain/intentTypes";
 import { expireSuggestions, generateSuggestions } from "../domain/suggestionRules";
 import type { AppSnapshot, SourceType, SyncedTask } from "../domain/types";
 import { sampleSnapshot } from "../data/sampleData";
+import { clampWindowSize } from "../domain/windowSizing";
 
 interface AimeDesktopApi {
   getSnapshot: () => Promise<AppSnapshot>;
@@ -21,6 +22,7 @@ interface AimeDesktopApi {
   openFullWindow: () => Promise<void>;
   setMiniMode: (miniMode: boolean) => Promise<void>;
   setWindowMode: (mode: "widget" | "peek" | "full") => Promise<void>;
+  setWindowSize: (width: number, height: number) => Promise<AppSnapshot>;
 }
 
 interface AimeIntentApi {
@@ -275,6 +277,19 @@ const webViewApi: AimeDesktopApi = {
   },
   setWindowMode: async (mode) => {
     postNative({ command: "setWindowMode", mode });
+  },
+  setWindowSize: async (width, height) => {
+    const size = clampWindowSize({ width, height });
+    const snapshot = await loadLocalSnapshot();
+    postNative({ command: "setWindowSize", ...size });
+    return saveLocalSnapshot({
+      ...snapshot,
+      settings: {
+        ...snapshot.settings,
+        widgetWidth: size.width,
+        widgetHeight: size.height,
+      },
+    });
   },
 };
 

@@ -6,6 +6,13 @@ beforeEach(() => {
 });
 
 describe("intentApi", () => {
+  it("persists a clamped companion window size", async () => {
+    const resized = await desktopApi.setWindowSize(900, 100);
+
+    expect(resized.settings.widgetWidth).toBe(560);
+    expect(resized.settings.widgetHeight).toBe(220);
+  });
+
   it("captures explicit events and generates a pending suggestion", async () => {
     await intentApi.captureEvent({
       triggerType: "manual_capture",

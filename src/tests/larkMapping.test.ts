@@ -13,6 +13,8 @@ const mapping: LarkFieldMapping = {
   sourceType: "来源",
   sourceUrl: "来源链接",
   project: "项目",
+  sourceExcerpt: "证据摘要",
+  result: "结果",
 };
 
 describe("larkMapping", () => {
@@ -27,6 +29,7 @@ describe("larkMapping", () => {
           来源: "聊天记录",
           来源链接: "[证据](https://bytedance.larkoffice.com/docx/example)",
           项目: "Aime",
+          证据摘要: "会议摘要",
         },
       },
       mapping,
@@ -41,6 +44,7 @@ describe("larkMapping", () => {
       sourceType: "group_chat",
       sourceUrl: "https://bytedance.larkoffice.com/docx/example",
       project: "Aime",
+      sourceExcerpt: "会议摘要",
     });
   });
 

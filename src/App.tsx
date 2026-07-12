@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CollapsedWidget } from "./components/CollapsedWidget";
 import { FullWindow } from "./components/FullWindow";
 import { PeekPanel } from "./components/PeekPanel";
@@ -37,8 +37,6 @@ function tomorrowDateKey(): string {
 export function App() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
   const [intentState, setIntentState] = useState<IntentState | null>(null);
-  const taskListRef = useRef<HTMLElement | null>(null);
-  const [taskListHighlighted, setTaskListHighlighted] = useState(false);
   const initialMode = new URLSearchParams(window.location.search).get("mode");
   const [expanded, setExpanded] = useState(
     initialMode === "peek" || initialMode === "full",
@@ -94,6 +92,13 @@ export function App() {
     await captureTaskAction("改到明天", task);
   }
 
+  async function rescheduleTask(taskId: string, date: string) {
+    if (!view) return;
+    const task = view.taskViewModels.find((item) => item.id === taskId);
+    setSnapshot(await desktopApi.rescheduleTask(taskId, date));
+    await captureTaskAction("改期", task);
+  }
+
   async function hideTask(taskId: string) {
     if (!view) return;
     const task = view.taskViewModels.find((item) => item.id === taskId);
@@ -147,10 +152,8 @@ export function App() {
     await refreshIntentState();
   }
 
-  function showTaskList() {
-    taskListRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-    setTaskListHighlighted(true);
-    window.setTimeout(() => setTaskListHighlighted(false), 900);
+  async function setWindowSize(width: number, height: number) {
+    setSnapshot(await desktopApi.setWindowSize(width, height));
   }
 
   if (new URLSearchParams(window.location.search).get("mode") === "full") {
@@ -161,6 +164,10 @@ export function App() {
         intentSettings={intentState?.settings ?? defaultIntentSettings}
         intentEventCount={intentState?.events.length ?? 0}
         intentSuggestionCount={intentState?.suggestions.length ?? 0}
+        onCompleteTask={completeTask}
+        onReopenTask={reopenTask}
+        onRescheduleTask={rescheduleTask}
+        onHideTask={hideTask}
         onCaptureIntent={(input) => void captureIntent(input)}
         onUpdateIntentSettings={(settings) => void updateIntentSettings(settings)}
         onClearIntentHistory={() => void clearIntentHistory()}
@@ -186,9 +193,7 @@ export function App() {
         onTomorrow={(taskId) => void moveToTomorrow(taskId)}
         onHide={(taskId) => void hideTask(taskId)}
         onOpenFull={() => void desktopApi.openFullWindow()}
-        onShowTasks={showTaskList}
-        taskListRef={taskListRef}
-        taskListHighlighted={taskListHighlighted}
+        onSetWindowSize={(width, height) => void setWindowSize(width, height)}
         onAcceptSuggestion={(suggestionId) => void acceptSuggestion(suggestionId)}
         onDismissSuggestion={(suggestionId) => void dismissSuggestion(suggestionId)}
         onNeverSuggestType={(suggestionId) => void neverSuggestType(suggestionId)}

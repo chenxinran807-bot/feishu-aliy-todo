@@ -1,155 +1,125 @@
-# Aime Desktop Task Companion
+# 神仙待办
 
-Mac-first desktop task companion for Aime todo monitoring.
+飞书待办的桌面常驻层：连接飞书后，把 Base 里的任务同步到桌面面板，并用更轻、更主动的方式提醒你处理重要事项。
 
-## Local Run
+## 用户路径
 
-Install dependencies:
+1. 首次打开桌面端，点击「一键配置」。
+2. 浏览器自动打开飞书授权页，在浏览器里点击确认授权。
+3. 桌面端自动完成剩余步骤：创建「神仙待办库」、初始化字段、拉取待办并开启自动同步。
+4. 如果 Aime 助手绑定失败，桌面端会显示「去 Aime 页面创建助理」按钮和一个输入框。用户在 [Aime 页面](https://aime.bytedance.net/assistant) 创建助理后，复制助理 ID（`cli_xxx` / `ou_xxx` / `oc_xxx`）粘贴到输入框，点击「绑定 Aime 助手」即可完成联动。
+
+> 说明：Aime 助手属于 Aime 平台内部应用，无法通过飞书 OpenAPI 自动创建。每个用户的 Aime 助手 ID 都不同，因此桌面端在自动创建 Base 后，需要用户手动提供自己的 Aime 助手 ID 才能完成绑定。
+
+排障命令：
+
+```bash
+npm run lark:bind-assistant -- --assistant-app-id cli_xxx
+npm run lark:bind-assistant -- --assistant-open-id ou_xxx
+npm run lark:bind-assistant -- --assistant-chat-id oc_xxx
+```
+
+连接成功后，桌面面板优先展示「同步」「飞书」入口；粘贴、截图、新增只作为补充方式。
+
+## 本地运行
+
+安装依赖：
 
 ```bash
 npm install
 ```
 
-Run the renderer in a browser:
-
-```bash
-npm run dev
-```
-
-Build the Mac desktop companion:
-
-```bash
-npm run build
-```
-
-Run the Mac desktop companion:
+构建并打开桌面端：
 
 ```bash
 npm run native:run
 ```
 
-Test:
+生成可分发 zip：
+
+```bash
+npm run native:dist
+```
+
+产物会输出到：
+
+```text
+dist/神仙待办-0.1.0-mac-arm64.zip
+```
+
+当前工作树里也可以直接打开已打包 App：
+
+```bash
+open ".build/神仙待办.app"
+```
+
+打包后的 App 会自带 Node 运行时、飞书连接组件和同步脚本，用户数据默认保存在：
+
+```text
+~/Library/Application Support/神仙待办
+```
+
+开发调试时可以临时指定数据目录：
+
+```bash
+AIME_DATA_DIR="/path/to/data" open ".build/神仙待办.app"
+```
+
+测试：
 
 ```bash
 npm test
 ```
 
-## MVP Behavior
+## 飞书联动
 
-- Shows a small always-on-top floating badge using a native Swift/AppKit shell.
-- Clicking the badge expands a compact, resizable task list, sorted by pinned state, priority, and due date.
-- The expanded panel has a bottom-right resize handle and remembers the user's preferred size.
-- Users can choose Minimal, Refined, or Cute display styles from "更多".
-- Minimal is low-noise and monochrome, Refined uses a macOS HUD-like glass feel, and Cute adds a companion-style status line and pastel task cards.
-- The expanded panel keeps only common actions visible: complete, reschedule, filter, and task-level "more".
-- Less frequent actions live behind "更多": opening sources, pinning, hiding, ignoring, P0/P1/P2 priority, creating tasks, screen recognition, and Aime/Base shortcuts.
-- The "识别屏幕" action captures the current screen, runs local macOS OCR, and lets you confirm/edit a new task before writing to Base.
-- "开始实时识别" runs local OCR every 45 seconds after the user explicitly enables it, and still asks for confirmation before creating a task.
-- New-task and overdue reminders use a lightweight sound/panel cue in the local MVP, with friendlier copy in Cute style.
-- Cute style can run as a dog-den todo companion: new actionable tasks appear as pending kibble, and completed tasks feed the dog.
-- Completion rewards trigger a short "walk the dog" state only after completion writes back to Lark Base.
-- P0 and overdue tasks use gentle dog reminder copy instead of punitive alerts.
-- Dragging the small dog onto a visible Lark/Feishu window can trigger screen sniffing; the app still asks for confirmation before creating tasks.
-- The first companion skin is dog-based; future skins can use cats, birds, plants, or user-uploaded pet photos while reusing the same completion reward model.
-- Completion status and due date/time are written back to Lark Base.
-- Pinning, hidden state, P0/P1/P2 priority, and filter preferences are stored locally on this Mac.
-- Long-term project progress logic is retained but no longer shown in the default compact panel.
-
-The Aime Base shortcut defaults to the current Base URL. The assistant shortcut defaults to this chat:
+桌面端通过 App 内置的 `aime-lark-sync.mjs` 连接飞书。打包版默认配置写入：
 
 ```text
-oc_31661171e477fd90c1d62de8e2f1a84d
+~/Library/Application Support/神仙待办/config/aime-base.local.json
 ```
 
-Set `AIME_ASSISTANT_URL` before launch if you need to override it:
-
-```bash
-AIME_ASSISTANT_URL="lark://..." npm run native:run
-```
-
-## Lark/Aime Connection Status
-
-The app is designed to connect to the existing Aime Lark Base:
+在开发仓库里直接跑 `npm run lark:*` 时，默认仍使用仓库内的 `config/aime-base.local.json`。这个本地配置不会提交到 Git。示例模板是：
 
 ```text
-https://bytedance.larkoffice.com/base/F4k1bKUkRaIafPsKxP2cVAyEnwJ?table=tblllGcOFXODLI5I&view=vewBgeF8ZA
+config/aime-base.example.json
 ```
 
-The current MVP can pull records from the existing Aime Base through `lark-cli`. The sync boundary is:
-
-- Pull task records from the Base table.
-- Auto-refresh pulled task records every 5 minutes while the widget is running.
-- Write completion status and due date back to Base.
-- Keep reminders, hidden state, pinning, and progress overrides local.
-
-Pet state is local to the Mac. Fed count, intimacy, companion mood, and rewarded-task ids are stored in Application Support next to the existing local preferences. Lark Base remains the source of truth for task status and due dates.
-
-## UI References
-
-The current style split borrows product patterns from:
-
-- `ntd4996/agentpet`: desktop companion state and playful task feedback.
-- `Wanduforl/MacArkPet`: native macOS desktop-pet presentation.
-- `bleeeet/TermiPet`: companion + status cards + quick commands.
-- `Liftof/littletodo`: tiny menu-bar todo with low-friction task access.
-- `wendybzhang/codex-quota-widget`: compact floating capsule density.
-
-## Lark/Aime Sync Preview
-
-The sync preview uses `lark-cli` and the config in `config/aime-base.example.json`.
-
-If your terminal is not already inside this project, either `cd` first:
+常用排障命令：
 
 ```bash
-cd "/Users/bytedance/Documents/todo agent/.worktrees/aime-desktop-mvp"
+npm run lark:setup              # 命令行执行完整开箱配置
+npm run lark:setup-status       # 查看当前配置进度
+npm run lark:doctor
+npm run lark:init
+npm run lark:pull -- --out tmp/aime-tasks.json
 ```
 
-Or run commands from anywhere with:
+`lark:doctor` 只检查连接状态，不会改飞书数据。它会告诉你下一步应该连接飞书、完成授权，还是直接同步。
+
+脚本自检：
 
 ```bash
-npm --prefix "/Users/bytedance/Documents/todo agent/.worktrees/aime-desktop-mvp" run lark:fields
+npm run lark:self-test
 ```
 
-Authorize Lark if needed:
+## 桌面能力
 
-```bash
-lark-cli auth login
-```
+- 从飞书 Base 拉取任务，桌面常驻展示。
+- 自动刷新飞书待办，默认 5 分钟一次。
+- 勾选完成会写回飞书；取消勾选会恢复未完成。
+- 支持置顶、隐藏、筛选、优先级和来源链接。
+- 点击任务可查看任务详情，详情不外露在有限面板上。
+- 支持粘贴飞书聊天/会议纪要补充识别待办。
+- 支持主动截图识别待办，截图只在用户点击时触发。
+- 飞书不可用时可临时保存，恢复后再写回。
 
-Inspect fields:
+## 产品边界
 
-```bash
-npm run lark:fields
-```
+神仙待办不是另一个本地 todo，也不是默认聊天助手。它的核心价值是：
 
-Pull tasks as normalized JSON:
+- 飞书是任务存储和协作地。
+- 桌面端负责常驻、同步、轻提醒和主动浮出。
+- 手动新增、粘贴、截图是补充入口，不是主路径。
 
-```bash
-npm run lark:pull
-```
-
-Create a task:
-
-```bash
-npm run lark:create -- --title "新的待办" --due-date "2026-06-24 18:00:00" --project "AI试穿"
-```
-
-Write completion status back to Base:
-
-```bash
-npm run lark:complete -- --record-id rec_xxx
-```
-
-Write ignored status back to Base:
-
-```bash
-npm run lark:ignore -- --record-id rec_xxx
-```
-
-Write a new due date/time back to Base:
-
-```bash
-npm run lark:reschedule -- --record-id rec_xxx --due-date "2026-06-24 18:00:00"
-```
-
-Before live use, update the field names in `config/aime-base.example.json` to match the real Aime Base table. The current environment needs the `base:field:read` scope before `npm run lark:fields` can succeed.
+已安装过旧版「小狗待办」的本机，打包版会优先复用旧数据目录，避免改名后丢失飞书连接配置。

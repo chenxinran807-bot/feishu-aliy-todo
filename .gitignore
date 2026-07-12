@@ -7,3 +7,4 @@ node_modules/
 dist/
 tmp/
 dist-electron/
+config/aime-base.local.json

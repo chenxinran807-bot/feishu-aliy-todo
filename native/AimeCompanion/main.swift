@@ -15,6 +15,10 @@ final class AimeMenuButton: NSButton {
     var payload: String = ""
 }
 
+final class AimePayloadNSView: NSView {
+    var payload: String = ""
+}
+
 private enum NativeTaskGroup: String {
     case p0
     case overdue
@@ -114,6 +118,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var preferences = LocalPreferences()
     private var showingHiddenTasks = false
     private var isExpanded = false
+    private var setupProcess: Process?
+    private var setupOutputData = Data()
+    private var setupStateLabel: NSTextField?
+    private var setupBindFailed = false
+    private var setupBaseUrl: String?
+    private var setupActionButton: NSButton?
+    private var assistantIdField: NSTextField?
     private var autoRefreshTimer: Timer?
     private var screenMonitorTimer: Timer?
     private var petState = PetState()
@@ -156,12 +167,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.contentView = buildContentView(frame: frame)
 
         updateWindowResizeBounds()
-        pullLatestTasks()
-        reloadTasks()
+        if configFileExists() {
+            pullLatestTasks()
+            reloadTasks()
+            startAutoRefresh()
+        } else {
+            showSetupView()
+        }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         createStatusItem()
-        startAutoRefresh()
     }
 
     private func buildContentView(frame: NSRect) -> NSView {
@@ -189,6 +204,336 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ])
 
         return container
+    }
+
+    private func showSetupView() {
+        rootStack.arrangedSubviews.forEach { view in
+            rootStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+
+        let title = label("欢迎使用神仙待办", size: 16, weight: .bold)
+        title.alignment = .center
+        rootStack.addArrangedSubview(title)
+
+        let subtitle = label("点击下面按钮，一键完成飞书授权、创建多维表格并绑定 Aime 助手。", size: 11, weight: .regular, color: .secondaryLabelColor)
+        subtitle.alignment = .center
+        rootStack.addArrangedSubview(subtitle)
+
+        let button = NSButton(title: "一键配置", target: self, action: #selector(startSetup))
+        button.bezelStyle = .rounded
+        rootStack.addArrangedSubview(button)
+        setupActionButton = button
+
+        let stateLabel = label("等待开始", size: 11, weight: .regular, color: .secondaryLabelColor)
+        stateLabel.alignment = .center
+        stateLabel.lineBreakMode = .byWordWrapping
+        stateLabel.maximumNumberOfLines = 4
+        stateLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        stateLabel.translatesAutoresizingMaskIntoConstraints = false
+        stateLabel.widthAnchor.constraint(equalToConstant: contentWidth()).isActive = true
+        rootStack.addArrangedSubview(stateLabel)
+        setupStateLabel = stateLabel
+
+        rootStack.needsLayout = true
+        rootStack.layoutSubtreeIfNeeded()
+
+        if ProcessInfo.processInfo.environment["AIME_AUTO_SETUP"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.startSetup()
+            }
+        }
+    }
+
+    @objc private func startSetup() {
+        guard setupProcess == nil else { return }
+        updateSetupState("正在启动飞书授权…")
+        runSetupCommand()
+    }
+
+    @objc private func copySetupBaseUrl() {
+        guard let url = setupBaseUrl, !url.isEmpty else { return }
+        let message = """
+        这是我的待办多维表格，请帮我读取任务、标记完成、更新截止时间。
+        Base 链接：\(url)
+        """
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(message, forType: .string)
+        updateSetupState("Base 链接和引导语已复制到剪贴板。\n直接粘贴给 Aime 助理即可。")
+    }
+
+    @objc private func openLarkOpenPlatformApps() {
+        openURLString("https://open.larkoffice.com/app/")
+    }
+
+    @objc private func copyAimeConfigCommand() {
+        updateSetupState("正在生成 Aime 配置指令…")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let (output, success) = self?.runSyncCommandReturningOutput(["print-aime-config"]) ?? ("", false)
+            guard success else {
+                DispatchQueue.main.async {
+                    self?.updateSetupState("生成配置指令失败，请稍后重试。")
+                }
+                return
+            }
+            guard let data = output.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+                  let text = json["text"] as? String, !text.isEmpty else {
+                DispatchQueue.main.async {
+                    self?.updateSetupState("生成配置指令失败，请稍后重试。")
+                }
+                return
+            }
+            DispatchQueue.main.async {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                self?.updateSetupState("Aime 配置指令已复制到剪贴板。\n直接粘贴给 Aime 助理即可。")
+            }
+        }
+    }
+
+    private func showAssistantBindingView(baseUrl: String) {
+        rootStack.arrangedSubviews.forEach { view in
+            rootStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+
+        let title = label("Base 已创建完成", size: 16, weight: .bold)
+        title.alignment = .center
+        rootStack.addArrangedSubview(title)
+
+        let subtitle = label("Aime 助手需要在 Aime 页面创建；创建后去飞书开放平台查看应用详情，复制以 cli_ 开头的应用 ID 粘贴到下方。", size: 11, weight: .regular, color: .secondaryLabelColor)
+        subtitle.alignment = .center
+        subtitle.lineBreakMode = .byWordWrapping
+        subtitle.maximumNumberOfLines = 3
+        subtitle.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        subtitle.translatesAutoresizingMaskIntoConstraints = false
+        subtitle.widthAnchor.constraint(equalToConstant: contentWidth()).isActive = true
+        rootStack.addArrangedSubview(subtitle)
+
+        let createButton = NSButton(title: "1. 去 Aime 页面创建助理", target: self, action: #selector(openAimeAssistantConfigPage))
+        createButton.bezelStyle = .rounded
+        rootStack.addArrangedSubview(createButton)
+
+        let idButton = NSButton(title: "2. 去飞书开放平台查看应用 ID", target: self, action: #selector(openLarkOpenPlatformApps))
+        idButton.bezelStyle = .rounded
+        rootStack.addArrangedSubview(idButton)
+
+        let input = NSTextField(string: "")
+        input.placeholderString = "粘贴 Aime 助手应用 ID（cli_xxx）"
+        input.bezelStyle = .roundedBezel
+        input.translatesAutoresizingMaskIntoConstraints = false
+        input.widthAnchor.constraint(equalToConstant: contentWidth()).isActive = true
+        rootStack.addArrangedSubview(input)
+        assistantIdField = input
+
+        let bindButton = NSButton(title: "绑定 Aime 助手", target: self, action: #selector(bindAssistantFromInput))
+        bindButton.bezelStyle = .rounded
+        rootStack.addArrangedSubview(bindButton)
+        setupActionButton = bindButton
+
+        let copyButton = NSButton(title: "复制 Base 链接", target: self, action: #selector(copySetupBaseUrl))
+        copyButton.bezelStyle = .rounded
+        rootStack.addArrangedSubview(copyButton)
+
+        let aimeConfigButton = NSButton(title: "复制 Aime 配置指令", target: self, action: #selector(copyAimeConfigCommand))
+        aimeConfigButton.bezelStyle = .rounded
+        rootStack.addArrangedSubview(aimeConfigButton)
+
+        let stateLabel = label("等待输入", size: 11, weight: .regular, color: .secondaryLabelColor)
+        stateLabel.alignment = .center
+        stateLabel.lineBreakMode = .byWordWrapping
+        stateLabel.maximumNumberOfLines = 4
+        stateLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        stateLabel.translatesAutoresizingMaskIntoConstraints = false
+        stateLabel.widthAnchor.constraint(equalToConstant: contentWidth()).isActive = true
+        rootStack.addArrangedSubview(stateLabel)
+        setupStateLabel = stateLabel
+
+        rootStack.needsLayout = true
+        rootStack.layoutSubtreeIfNeeded()
+    }
+
+    @objc private func openAimeAssistantConfigPage() {
+        openURLString("https://aime.bytedance.net/assistant")
+    }
+
+    @objc private func bindAssistantFromInput() {
+        guard let input = assistantIdField, !input.stringValue.isEmpty else {
+            updateSetupState("请先输入 Aime 助手 ID")
+            return
+        }
+        let value = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard value.hasPrefix("cli_") || value.hasPrefix("ou_") || value.hasPrefix("oc_") else {
+            updateSetupState("ID 格式不正确。请输入以 cli_、ou_ 或 oc_ 开头的 Aime 助手 ID。")
+            return
+        }
+        let args = ["bind-assistant", "--assistant-id", value]
+
+        updateSetupState("正在绑定 Aime 助手…")
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let (output, success) = self?.runSyncCommandReturningOutput(args) ?? ("", false)
+            DispatchQueue.main.async {
+                if success && output.localizedStandardContains("\"ok\":true") {
+                    self?.updateSetupState("绑定成功，正在加载…")
+                    self?.pullLatestTasks()
+                    self?.reloadTasks()
+                    self?.startAutoRefresh()
+                } else if output.localizedStandardContains("\"scopeMissing\":true") || output.localizedStandardContains("docs:permission.member:create") {
+                    self?.updateSetupState("需要额外的飞书权限才能绑定助手。\n请在终端运行：\nlark-cli auth login --scope \"docs:permission.member:create\"\n授权后重试。")
+                } else {
+                    let reason = self?.parseBindFailureReason(output) ?? "绑定失败，请确认 ID 正确且已在 Aime 页面创建助理。"
+                    self?.updateSetupState(reason)
+                }
+            }
+        }
+    }
+
+    private func parseBindFailureReason(_ output: String) -> String {
+        guard let data = output.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+            return "绑定失败，请确认 ID 正确且已在 Aime 页面创建助理。"
+        }
+        if let reason = json["reason"] as? String, !reason.isEmpty {
+            return "绑定失败：\(reason)"
+        }
+        return "绑定失败，请确认 ID 正确且已在 Aime 页面创建助理。"
+    }
+
+    private func updateSetupState(_ text: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.setupStateLabel?.stringValue = text
+        }
+    }
+
+    private func runSetupCommand() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+
+        let syncScriptPath: String
+        if let bundledPath = ProcessInfo.processInfo.environment["AIME_SYNC_SCRIPT_PATH"], !bundledPath.isEmpty {
+            syncScriptPath = bundledPath
+        } else {
+            let repoRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            syncScriptPath = repoRoot.appendingPathComponent("scripts/aime-lark-sync.mjs").path
+        }
+
+        process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        process.arguments = ["node", syncScriptPath, "setup"]
+
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        setupOutputData = Data()
+        stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+            } else {
+                self?.setupOutputData.append(data)
+                self?.handleSetupOutput(data)
+            }
+        }
+        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+            } else {
+                if let text = String(data: data, encoding: .utf8), !text.isEmpty {
+                    print("Aime setup stderr: \(text)")
+                }
+            }
+        }
+
+        process.terminationHandler = { [weak self] process in
+            DispatchQueue.main.async {
+                self?.handleSetupTermination(process)
+            }
+        }
+
+        do {
+            try process.run()
+            setupProcess = process
+        } catch {
+            updateSetupState("启动失败：\(error.localizedDescription)")
+            setupProcess = nil
+        }
+    }
+
+    private func handleSetupOutput(_ data: Data) {
+        guard let text = String(data: data, encoding: .utf8) else { return }
+        for line in text.components(separatedBy: .newlines) where !line.isEmpty {
+            if let json = try? JSONSerialization.jsonObject(with: Data(line.utf8), options: []) as? [String: Any] {
+                handleSetupEvent(json)
+            }
+        }
+    }
+
+    private func handleSetupEvent(_ json: [String: Any]) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if let step = json["step"] as? String {
+                switch step {
+                case "awaiting_auth":
+                    if let url = json["verificationUrl"] as? String {
+                        self.updateSetupState("请在浏览器中完成飞书授权\n\(url)")
+                        self.openURLString(url)
+                    }
+                case "creating_base":
+                    self.updateSetupState("授权成功，正在创建多维表格…")
+                case "binding_assistant":
+                    self.updateSetupState("正在绑定 Aime 助手…")
+                case "complete":
+                    if let bindResult = json["bindResult"] as? [String: Any],
+                       let bound = bindResult["bound"] as? Bool, !bound {
+                        self.setupBindFailed = true
+                        let baseUrl = (json["config"] as? [String: Any])?["baseUrl"] as? String ?? ""
+                        self.setupBaseUrl = baseUrl
+                        self.showAssistantBindingView(baseUrl: baseUrl)
+                    } else {
+                        self.updateSetupState("配置完成，正在加载…")
+                    }
+                case "already_configured":
+                    self.updateSetupState("已配置完成，正在加载…")
+                default:
+                    break
+                }
+            }
+        }
+    }
+
+    private func handleSetupTermination(_ process: Process) {
+        setupProcess = nil
+
+        if process.terminationStatus == 0 {
+            if setupBindFailed {
+                return
+            }
+            updateSetupState("配置成功")
+            pullLatestTasks()
+            reloadTasks()
+            startAutoRefresh()
+        } else {
+            let text = String(data: setupOutputData, encoding: .utf8) ?? ""
+            let isAuthFailure = text.localizedStandardContains("auth") ||
+                text.localizedStandardContains("authorization") ||
+                text.localizedStandardContains("token_missing") ||
+                text.localizedStandardContains("need_user_authorization")
+            if isAuthFailure {
+                updateSetupState("授权失败或未在浏览器中确认。\n请点击下方按钮重新发起飞书授权。")
+            } else {
+                let reason = text.isEmpty ? "未知错误" : String(text.prefix(200))
+                updateSetupState("配置失败：\(reason)")
+            }
+            if let button = setupActionButton {
+                button.title = "重新授权"
+                button.action = #selector(startSetup)
+            }
+        }
     }
 
     private func applyWindowStyle() {
@@ -232,9 +577,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
         if preferences.displayStyle == "cute" {
             rootStack.addArrangedSubview(syncStatusRow())
-            rootStack.addArrangedSubview(nativeTaskFilterRow(tasks: visibleTasks))
-            rootStack.addArrangedSubview(webAlignedTaskListPreview(groupedTasks(from: visibleTasks)))
-            rootStack.addArrangedSubview(resizeHandle())
+            rootStack.addArrangedSubview(nativeTaskFilterRow(tasks: sortedTasks))
+            rootStack.addArrangedSubview(webAlignedTaskListPreview(groupedTasks(from: sortedTasks)))
             fitCuteExpandedWindowToContent()
             return
         } else if let statusView = styleStatusView(openCount: actionableTasks.count, overdueCount: overdueTasks.count) {
@@ -284,18 +628,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         stack.spacing = 4
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let orbText = preferences.displayStyle == "cute" ? dogFace() : avatarText()
-        let orbSize: CGFloat = preferences.displayStyle == "cute" ? 24 : 16
-        let orb = label(orbText, size: orbSize, weight: .bold, color: avatarTextColor())
-        orb.alignment = .center
-        orb.wantsLayer = true
-        orb.layer?.backgroundColor = avatarColor().cgColor
-        orb.layer?.cornerRadius = avatarCornerRadius(size: 40)
-        orb.widthAnchor.constraint(equalToConstant: 40).isActive = true
-        orb.heightAnchor.constraint(equalToConstant: 40).isActive = true
-
         let summaryText = compactSummaryText(openCount: openCount, overdueCount: overdueCount)
-        stack.addArrangedSubview(orb)
         stack.addArrangedSubview(label(summaryText, size: 11, weight: .semibold))
         button.addSubview(stack)
 
@@ -320,21 +653,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return "待办 · \(petState.pendingKibbleCount)"
         }
         return overdueCount > 0 ? "\(overdueCount) 逾期" : "\(openCount) 待办"
-    }
-
-    private func dogFace() -> String {
-        switch petState.dogMood {
-        case .concerned:
-            return "🐶!"
-        case .walking:
-            return "🐕"
-        case .happyReturn:
-            return "🐶✓"
-        case .sniffing:
-            return "🐶?"
-        default:
-            return "🐶"
-        }
     }
 
     private func dogStateLine() -> String {
@@ -419,15 +737,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func sortTasks(_ tasks: [AimeTask]) -> [AimeTask] {
-        tasks.sorted { left, right in
+        let result = tasks.sorted { left, right in
             let leftPinned = preferences.pinnedTaskIds.contains(left.id)
             let rightPinned = preferences.pinnedTaskIds.contains(right.id)
             if leftPinned != rightPinned {
                 return leftPinned
             }
 
-            let leftPriority = priorityRank(preferences.priorityByTaskId[left.id] ?? "P2")
-            let rightPriority = priorityRank(preferences.priorityByTaskId[right.id] ?? "P2")
+            let ascending = preferences.sortAscending
+            switch preferences.sortKey {
+            case "priority":
+                let leftRank = priorityRank(preferences.priorityByTaskId[left.id] ?? left.priority ?? "P2")
+                let rightRank = priorityRank(preferences.priorityByTaskId[right.id] ?? right.priority ?? "P2")
+                if leftRank != rightRank {
+                    return ascending ? leftRank < rightRank : leftRank > rightRank
+                }
+            case "dueDate":
+                let leftHasDate = left.dueDate != nil && !left.dueDate!.isEmpty
+                let rightHasDate = right.dueDate != nil && !right.dueDate!.isEmpty
+                if leftHasDate != rightHasDate {
+                    return leftHasDate
+                }
+                let leftDate = left.dueDate ?? "9999-12-31"
+                let rightDate = right.dueDate ?? "9999-12-31"
+                if leftDate != rightDate {
+                    return ascending ? leftDate < rightDate : leftDate > rightDate
+                }
+            case "title":
+                if left.title != right.title {
+                    return ascending ? left.title < right.title : left.title > right.title
+                }
+            default:
+                break
+            }
+
+            let leftPriority = priorityRank(preferences.priorityByTaskId[left.id] ?? left.priority ?? "P2")
+            let rightPriority = priorityRank(preferences.priorityByTaskId[right.id] ?? right.priority ?? "P2")
             if leftPriority != rightPriority {
                 return leftPriority < rightPriority
             }
@@ -439,13 +784,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             return leftDate < rightDate
         }
+        return result
     }
 
     private func priorityRank(_ priority: String) -> Int {
         switch priority {
-        case "P0": return 0
-        case "P1": return 1
-        default: return 2
+        case "P0": return 3
+        case "P1": return 2
+        case "P2": return 1
+        default: return 0
         }
     }
 
@@ -454,17 +801,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = preferences.displayStyle == "cute" ? scaledCute(12) : 10
-
-        let avatar = preferences.displayStyle == "cute" ? dogFace() : avatarText()
-        let avatarSize: CGFloat = preferences.displayStyle == "cute" ? scaledCute(34) : 17
-        let orb = label(avatar, size: avatarSize, weight: .bold, color: avatarTextColor())
-        orb.alignment = .center
-        orb.wantsLayer = true
-        orb.layer?.backgroundColor = avatarColor().cgColor
-        let avatarBoxSize: CGFloat = preferences.displayStyle == "cute" ? scaledCute(70) : 44
-        orb.layer?.cornerRadius = avatarCornerRadius(size: avatarBoxSize)
-        orb.widthAnchor.constraint(equalToConstant: avatarBoxSize).isActive = true
-        orb.heightAnchor.constraint(equalToConstant: avatarBoxSize).isActive = true
 
         let summaryText = preferences.displayStyle == "cute"
             ? "\(openCount) 件待办"
@@ -480,11 +816,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         collapse.bezelStyle = .rounded
         collapse.controlSize = usesCompactExpandedLayout() ? .mini : (preferences.displayStyle == "cute" ? .regular : .small)
 
-        row.addArrangedSubview(orb)
         row.addArrangedSubview(titleStack)
         if preferences.displayStyle == "cute" {
             row.addArrangedSubview(toolbarButton(title: "+", toolTip: "新增待办", action: #selector(addTaskClicked)))
-            row.addArrangedSubview(toolbarButton(title: "识别", toolTip: "从当前屏幕识别待办", action: #selector(captureScreenClicked)))
         }
         if preferences.displayStyle != "cute" {
             let more = menuButton(title: "更多", action: #selector(showHeaderMoreMenu(_:)))
@@ -498,9 +832,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let button = NSButton(title: title, target: self, action: action)
         button.bezelStyle = .rounded
         button.controlSize = usesCompactExpandedLayout() ? .mini : .small
+        button.font = NSFont.systemFont(ofSize: 11, weight: .regular)
         button.toolTip = toolTip
         button.setContentHuggingPriority(.required, for: .horizontal)
         return button
+    }
+
+    private func sortButtonLabel() -> String {
+        let keyText: String
+        switch preferences.sortKey {
+        case "dueDate": keyText = "截止"
+        case "title": keyText = "标题"
+        default: keyText = "优先级"
+        }
+        let arrow = preferences.sortAscending ? "↑" : "↓"
+        return "\(keyText)\(arrow)"
+    }
+
+    private func sortMenuItem(title: String, key: String, menu: NSMenu) {
+        let item = NSMenuItem(title: title, action: #selector(sortKeySelected(_:)), keyEquivalent: "")
+        item.representedObject = key
+        item.state = preferences.sortKey == key ? .on : .off
+        item.target = self
+        menu.addItem(item)
+    }
+
+    @objc private func showSortMenu(_ sender: NSButton) {
+        let menu = NSMenu()
+        sortMenuItem(title: "按优先级", key: "priority", menu: menu)
+        sortMenuItem(title: "按截止时间", key: "dueDate", menu: menu)
+        sortMenuItem(title: "按标题", key: "title", menu: menu)
+        menu.addItem(NSMenuItem.separator())
+        let ascendingItem = NSMenuItem(title: "升序", action: #selector(toggleSortAscending(_:)), keyEquivalent: "")
+        ascendingItem.state = preferences.sortAscending ? .on : .off
+        ascendingItem.target = self
+        menu.addItem(ascendingItem)
+        let descendingItem = NSMenuItem(title: "降序", action: #selector(toggleSortAscending(_:)), keyEquivalent: "")
+        descendingItem.state = preferences.sortAscending ? .off : .on
+        descendingItem.target = self
+        menu.addItem(descendingItem)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 2), in: sender)
+    }
+
+    @objc private func sortKeySelected(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? String else { return }
+        preferences.sortKey = key
+        savePreferences()
+        reloadTasks()
+    }
+
+    @objc private func toggleSortAscending(_ sender: NSMenuItem) {
+        preferences.sortAscending.toggle()
+        savePreferences()
+        reloadTasks()
     }
 
     private func syncStatusRow() -> NSView {
@@ -514,7 +898,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         row.addArrangedSubview(status)
 
         row.addArrangedSubview(toolbarButton(title: "刷新", toolTip: "同步飞书 Base", action: #selector(refreshClicked)))
-        row.addArrangedSubview(toolbarButton(title: screenMonitorTimer == nil ? "实时" : "停止", toolTip: "定时识别当前屏幕待办", action: #selector(toggleScreenMonitor)))
         row.addArrangedSubview(toolbarButton(title: "Base", toolTip: "打开飞书 Base", action: #selector(openAimeBase)))
 
         return padded(row, width: contentWidth(), vertical: 4)
@@ -552,6 +935,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if overdueCount > 0 {
             row.addArrangedSubview(filterChip(title: "逾期", count: overdueCount, group: .overdue))
         }
+        row.addArrangedSubview(NSStackView())
+        row.addArrangedSubview(toolbarButton(title: sortButtonLabel(), toolTip: "排序方式", action: #selector(showSortMenu(_:))))
         return row
     }
 
@@ -690,7 +1075,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.drawsBackground = false
-        scrollView.hasVerticalScroller = openTasks.count > 3
+        // 固定小窗口不显示滚动条，避免右侧留白；仍可用滚轮滑动
+        scrollView.hasVerticalScroller = false
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
@@ -713,7 +1099,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ])
 
         stack.addArrangedSubview(scrollView)
-        stack.addArrangedSubview(label("共 \(openTasks.count) 件，可上下滑动", size: scaledCute(12), weight: .semibold, color: mutedColor()))
+        // 底部 footer 已移除，避免留白
         return stack
     }
 
@@ -731,7 +1117,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         actions.alignment = .centerY
         actions.spacing = 8
         actions.addArrangedSubview(toolbarButton(title: "新增", toolTip: "新增待办", action: #selector(addTaskClicked)))
-        actions.addArrangedSubview(toolbarButton(title: "识别屏幕", toolTip: "从当前屏幕识别待办", action: #selector(captureScreenClicked)))
         stack.addArrangedSubview(actions)
 
         return card(stack, width: contentWidth())
@@ -768,16 +1153,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         titleStack.alignment = .leading
         titleStack.spacing = scaledCute(3)
         titleStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let priority = preferences.priorityByTaskId[task.id] ?? "P2"
-        titleStack.addArrangedSubview(label("\(priority) · \(task.title)", size: usesCompactExpandedLayout() ? 13 : scaledCute(18), weight: .semibold))
+        let priority = preferences.priorityByTaskId[task.id] ?? task.priority ?? "P2"
+        let isPinned = preferences.pinnedTaskIds.contains(task.id)
+        titleStack.addArrangedSubview(label("\(priority) · \(task.title)", size: usesCompactExpandedLayout() ? 13 : scaledCute(18), weight: .semibold, color: titleColor(priority: priority, isPinned: isPinned)))
         titleStack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: usesCompactExpandedLayout() ? 11 : scaledCute(13), weight: .medium, color: mutedColor()))
+
+        let clickableTitle = clickableTaskTitle(task, content: titleStack)
 
         let more = menuButton(title: "•••", action: #selector(showTaskMoreMenu(_:)), payload: task.id)
         more.toolTip = "更多操作"
         more.setContentHuggingPriority(.required, for: .horizontal)
 
         row.addArrangedSubview(check)
-        row.addArrangedSubview(titleStack)
+        row.addArrangedSubview(clickableTitle)
         if let sourceUrl = task.sourceUrl, !sourceUrl.isEmpty {
             let source = AimeActionButton(title: "↗", target: self, action: #selector(openTaskSource(_:)))
             source.payload = sourceUrl
@@ -806,7 +1194,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ].compactMap { $0 }.joined(separator: " · ")
         let title = statePrefix.isEmpty ? task.title : "\(statePrefix) · \(task.title)"
 
-        stack.addArrangedSubview(label(title, size: 13, weight: isPinned ? .bold : .semibold, color: titleColor(priority: priority, isPinned: isPinned)))
+        let titleLabel = label(title, size: 13, weight: isPinned ? .bold : .semibold, color: titleColor(priority: priority, isPinned: isPinned))
+        let clickableTitle = clickableTaskTitle(task, content: titleLabel)
+        stack.addArrangedSubview(clickableTitle)
         stack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 11, color: mutedColor()))
         stack.addArrangedSubview(actionRow(for: task))
         return card(stack, width: contentWidth(), priority: priority, isPinned: isPinned)
@@ -917,6 +1307,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return stack
     }
 
+    private func clickableTaskTitle(_ task: AimeTask, content: NSView) -> NSView {
+        let wrapper = AimePayloadNSView()
+        wrapper.payload = task.id
+        wrapper.wantsLayer = true
+        wrapper.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.addSubview(content)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor),
+            content.topAnchor.constraint(equalTo: wrapper.topAnchor),
+            content.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor)
+        ])
+        let click = NSClickGestureRecognizer(target: self, action: #selector(taskTitleClicked(_:)))
+        click.numberOfClicksRequired = 1
+        wrapper.addGestureRecognizer(click)
+        return wrapper
+    }
+
+    @objc private func taskTitleClicked(_ sender: NSClickGestureRecognizer) {
+        guard let wrapper = sender.view as? AimePayloadNSView else { return }
+        editTaskDetail(recordId: wrapper.payload)
+    }
+
     private func card(_ content: NSView, width: CGFloat = 388, priority: String = "P2", isPinned: Bool = false) -> NSView {
         let wrapper = NSView()
         wrapper.wantsLayer = true
@@ -957,18 +1371,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func cardColor(priority: String, isPinned: Bool) -> NSColor {
         if preferences.displayStyle == "cute" {
             if isPinned { return NSColor.controlAccentColor.withAlphaComponent(0.12) }
-            if priority == "P0" { return NSColor.systemRed.withAlphaComponent(0.08) }
-            return NSColor.windowBackgroundColor.withAlphaComponent(0.72)
+            switch priority {
+            case "P0": return NSColor.systemRed.withAlphaComponent(0.12)
+            case "P1": return NSColor.systemOrange.withAlphaComponent(0.12)
+            case "P2": return NSColor.systemBlue.withAlphaComponent(0.10)
+            default: return NSColor.windowBackgroundColor.withAlphaComponent(0.72)
+            }
         }
         if preferences.displayStyle == "minimal" {
             if isPinned { return NSColor.white.withAlphaComponent(0.9) }
-            if priority == "P0" { return NSColor(calibratedWhite: 1, alpha: 0.88) }
-            return NSColor.white.withAlphaComponent(0.72)
+            switch priority {
+            case "P0": return NSColor(calibratedWhite: 1, alpha: 0.88)
+            case "P1": return NSColor.systemOrange.withAlphaComponent(0.08)
+            case "P2": return NSColor.systemBlue.withAlphaComponent(0.08)
+            default: return NSColor.white.withAlphaComponent(0.72)
+            }
         }
         if isPinned { return NSColor(calibratedRed: 1, green: 0.96, blue: 0.76, alpha: 0.92) }
-        if priority == "P0" { return NSColor(calibratedRed: 1, green: 0.88, blue: 0.86, alpha: 0.9) }
-        if priority == "P1" { return NSColor(calibratedRed: 0.9, green: 0.95, blue: 1, alpha: 0.85) }
-        return NSColor.white.withAlphaComponent(0.72)
+        switch priority {
+        case "P0": return NSColor(calibratedRed: 1, green: 0.88, blue: 0.86, alpha: 0.9)
+        case "P1": return NSColor(calibratedRed: 1, green: 0.94, blue: 0.86, alpha: 0.9)
+        case "P2": return NSColor(calibratedRed: 0.86, green: 0.93, blue: 1, alpha: 0.9)
+        default: return NSColor.white.withAlphaComponent(0.72)
+        }
     }
 
     private func cardCornerRadius() -> CGFloat {
@@ -1063,8 +1488,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func titleColor(priority: String, isPinned: Bool) -> NSColor {
         if isPinned { return NSColor(calibratedRed: 0.38, green: 0.25, blue: 0.02, alpha: 1) }
-        if priority == "P0" { return NSColor.systemRed }
-        return NSColor.labelColor
+        switch priority {
+        case "P0": return NSColor.systemRed
+        case "P1": return NSColor.systemOrange
+        case "P2": return NSColor.systemBlue
+        default: return NSColor.secondaryLabelColor
+        }
     }
 
     private func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = NSColor.labelColor) -> NSTextField {
@@ -1126,8 +1555,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func resetWindowPositionAndShow() {
         isExpanded = true
-        preferences.expandedPanelWidth = preferences.displayStyle == "cute" ? 420 : 320
-        preferences.expandedPanelHeight = preferences.displayStyle == "cute" ? 360 : 420
+        preferences.expandedPanelWidth = 360
+        preferences.expandedPanelHeight = 260
         savePreferences()
         updateWindowResizeBounds()
         reloadTasks()
@@ -1165,18 +1594,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func updateWindowResizeBounds() {
-        if isExpanded {
-            if preferences.displayStyle == "cute" {
-                window.minSize = NSSize(width: 320, height: 220)
-                window.maxSize = NSSize(width: 440, height: 520)
-            } else {
-                window.minSize = NSSize(width: 240, height: 240)
-                window.maxSize = NSSize(width: 640, height: 640)
-            }
-        } else {
-            window.minSize = NSSize(width: 120, height: 104)
-            window.maxSize = NSSize(width: 120, height: 104)
-        }
+        window.minSize = NSSize(width: 320, height: 220)
+        window.maxSize = NSSize(width: 560, height: 520)
     }
 
     @objc private func refreshClicked() {
@@ -1188,15 +1607,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func showHeaderMoreMenu(_ sender: AimeMenuButton) {
         let menu = NSMenu()
         addMenuItem("新增待办", to: menu, action: #selector(addTaskClicked))
-        addMenuItem("识别屏幕", to: menu, action: #selector(captureScreenClicked))
-        addMenuItem(screenMonitorTimer == nil ? "开始实时识别" : "停止实时识别", to: menu, action: #selector(toggleScreenMonitor))
         menu.addItem(NSMenuItem.separator())
         addMenuItem("打开多维表格", to: menu, action: #selector(openAimeBase))
         addMenuItem("打开 Aime 助手", to: menu, action: #selector(openAimeAssistant))
         menu.addItem(NSMenuItem.separator())
         addPayloadMenuItem("风格：简洁", payload: "minimal", to: menu, action: #selector(changeDisplayStyle(_:)))
         addPayloadMenuItem("风格：精致", payload: "refined", to: menu, action: #selector(changeDisplayStyle(_:)))
-        addPayloadMenuItem("风格：可爱", payload: "cute", to: menu, action: #selector(changeDisplayStyle(_:)))
         menu.addItem(NSMenuItem.separator())
         addMenuItem(showingHiddenTasks ? "收起隐藏任务" : "显示隐藏任务", to: menu, action: #selector(toggleShowHiddenTasks))
         addMenuItem("重置面板尺寸", to: menu, action: #selector(resetExpandedPanelSize))
@@ -1209,6 +1625,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let task = tasks.first(where: { $0.id == sender.payload }) else { return }
 
         let menu = NSMenu()
+        addPayloadMenuItem("查看/编辑详情", payload: task.id, to: menu, action: #selector(editTaskFromMenu(_:)))
+        menu.addItem(NSMenuItem.separator())
         if let sourceUrl = task.sourceUrl, !sourceUrl.isEmpty {
             addPayloadMenuItem("打开来源", payload: sourceUrl, to: menu, action: #selector(openTaskSourceFromMenu(_:)))
             menu.addItem(NSMenuItem.separator())
@@ -1279,16 +1697,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         petState.dogMood = .sniffing
         savePetState()
         reloadTasks()
-
-        if isLikelyLarkWindow(at: point) {
-            scanScreenForTasks(dialogTitle: "从飞书窗口识别待办", skipDuplicate: false)
-        } else {
-            showMessage(
-                "准备识别",
-                detail: "拖到飞书聊天或会议纪要窗口附近触发当前屏幕识别。"
-            )
-            finishSniffing(as: .idle)
-        }
+        showMessage(
+            "屏幕识别已暂停",
+            detail: "当前版本暂不自动截取屏幕，请手动新增待办或使用飞书 Base。"
+        )
+        finishSniffing(as: .idle)
     }
 
     @objc private func toggleScreenMonitor() {
@@ -1306,8 +1719,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func resetExpandedPanelSize() {
-        preferences.expandedPanelWidth = preferences.displayStyle == "cute" ? 420 : 320
-        preferences.expandedPanelHeight = preferences.displayStyle == "cute" ? 360 : 420
+        preferences.expandedPanelWidth = 360
+        preferences.expandedPanelHeight = 260
         savePreferences()
         guard isExpanded else { return }
         window.setFrame(frameForCurrentMode(), display: true, animate: true)
@@ -1432,6 +1845,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func openTaskSourceFromMenu(_ sender: AimeMenuItem) {
         openURLString(sender.payload)
+    }
+
+    @objc private func editTaskFromMenu(_ sender: AimeMenuItem) {
+        editTaskDetail(recordId: sender.payload)
     }
 
     private func openURLString(_ urlString: String) {
@@ -1579,6 +1996,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return "\(currentDirectory)/tmp/aime-tasks.json"
     }
 
+    private func configFilePath() -> String {
+        let currentDirectory = FileManager.default.currentDirectoryPath
+        return "\(currentDirectory)/config/aime-base.local.json"
+    }
+
+    private func configFileExists() -> Bool {
+        FileManager.default.fileExists(atPath: configFilePath())
+    }
+
     @discardableResult
     private func pullLatestTasks() -> Bool {
         let succeeded = runSyncCommand(["pull", "--out", "tmp/aime-tasks.json"])
@@ -1627,24 +2053,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @discardableResult
     private func runSyncCommand(_ arguments: [String]) -> Bool {
+        let (_, success) = runSyncCommandReturningOutput(arguments)
+        return success
+    }
+
+    private func runSyncCommandWithOutput(_ arguments: [String]) -> String {
+        let (output, _) = runSyncCommandReturningOutput(arguments)
+        return output
+    }
+
+    private func runSyncCommandReturningOutput(_ arguments: [String]) -> (String, Bool) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+
+        let syncScriptPath: String
+        if let bundledPath = ProcessInfo.processInfo.environment["AIME_SYNC_SCRIPT_PATH"], !bundledPath.isEmpty {
+            syncScriptPath = bundledPath
+        } else {
+            let repoRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            syncScriptPath = repoRoot.appendingPathComponent("scripts/aime-lark-sync.mjs").path
+        }
+
         process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        process.arguments = ["node", "scripts/aime-lark-sync.mjs"] + arguments
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        process.arguments = ["node", syncScriptPath] + arguments
+
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        var stdoutData = Data()
+        var stderrData = Data()
+        stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+            } else {
+                stdoutData.append(data)
+            }
+        }
+        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+            } else {
+                stderrData.append(data)
+            }
+        }
 
         do {
             try process.run()
             process.waitUntilExit()
+            stdoutPipe.fileHandleForReading.readabilityHandler = nil
+            stderrPipe.fileHandleForReading.readabilityHandler = nil
+
+            let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
+            let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
+            let combined = [stdoutText, stderrText].filter { !$0.isEmpty }.joined(separator: "\n")
             if process.terminationStatus != 0 {
                 print("Aime sync command failed: \(arguments.joined(separator: " "))")
-                return false
+                if !stdoutText.isEmpty { print("stdout: \(stdoutText)") }
+                if !stderrText.isEmpty { print("stderr: \(stderrText)") }
+                return (combined, false)
             }
-            return true
+            if !stdoutText.isEmpty { print("Aime sync stdout: \(stdoutText)") }
+            return (combined, true)
         } catch {
             print("Aime sync command could not run: \(error.localizedDescription)")
-            return false
+            return (error.localizedDescription, false)
         }
     }
 
@@ -1824,6 +2300,239 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func closeModalPanel(_ sender: NSButton) {
         NSApp.stopModal(withCode: sender.tag == 1 ? .OK : .cancel)
+    }
+
+    private struct TaskEditDraft {
+        let title: String
+        let dueDate: String?
+        let project: String?
+        let priority: String
+        let sourceUrl: String?
+        let details: String?
+    }
+
+    private func editTaskDetail(recordId: String) {
+        let tasks = loadTasks()
+        guard let task = tasks.first(where: { $0.id == recordId }) else { return }
+        guard let draft = taskDetailEditDialog(task: task) else { return }
+
+        var arguments: [String] = ["update", "--record-id", recordId, "--title", draft.title]
+        if let dueDate = draft.dueDate, !dueDate.isEmpty {
+            arguments += ["--due-date", dueDate]
+        }
+        if let project = draft.project, !project.isEmpty {
+            arguments += ["--project", project]
+        }
+        arguments += ["--priority", draft.priority]
+        if let sourceUrl = draft.sourceUrl, !sourceUrl.isEmpty {
+            arguments += ["--source-url", sourceUrl]
+        }
+        if let details = draft.details, !details.isEmpty {
+            arguments += ["--details", details]
+        }
+
+        let succeeded = runSyncCommand(arguments)
+        if succeeded {
+            preferences.priorityByTaskId[recordId] = draft.priority
+            savePreferences()
+            pullLatestTasks()
+            reloadTasks()
+        } else {
+            showMessage("保存失败", detail: "未能将修改同步到飞书 Base。")
+        }
+    }
+
+    private func taskDetailEditDialog(task: AimeTask) -> TaskEditDraft? {
+        var result: TaskEditDraft?
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 480),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "任务详情"
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.center()
+
+        let content = NSView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        panel.contentView = content
+
+        let heading = label("查看/编辑任务", size: 17, weight: .semibold)
+        heading.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = label("标题", size: 11, color: mutedColor())
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        let titleField = NSTextField(string: task.title)
+        titleField.placeholderString = "待办标题"
+        titleField.translatesAutoresizingMaskIntoConstraints = false
+
+        let dueLabel = label("截止时间", size: 11, color: mutedColor())
+        dueLabel.translatesAutoresizingMaskIntoConstraints = false
+        let duePicker = NSDatePicker()
+        duePicker.datePickerStyle = .textFieldAndStepper
+        duePicker.datePickerElements = [.yearMonthDay, .hourMinute]
+        duePicker.dateValue = parsedDueDate(task.dueDate) ?? Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        duePicker.translatesAutoresizingMaskIntoConstraints = false
+
+        let projectLabel = label("分类", size: 11, color: mutedColor())
+        projectLabel.translatesAutoresizingMaskIntoConstraints = false
+        let projectField = NSTextField(string: task.project ?? "")
+        projectField.placeholderString = "分类，可留空"
+        projectField.translatesAutoresizingMaskIntoConstraints = false
+
+        let priorityLabel = label("优先级", size: 11, color: mutedColor())
+        priorityLabel.translatesAutoresizingMaskIntoConstraints = false
+        let priorityPopup = NSPopUpButton()
+        priorityPopup.translatesAutoresizingMaskIntoConstraints = false
+        [("P0", "P0"), ("P1", "P1"), ("P2", "P2"), ("无", "P3")].forEach { title, value in
+            priorityPopup.addItem(withTitle: title)
+            priorityPopup.lastItem?.representedObject = value
+        }
+        let currentPriority = preferences.priorityByTaskId[task.id] ?? task.priority ?? "P2"
+        priorityPopup.selectItem(at: ["P0", "P1", "P2", "P3"].firstIndex(of: currentPriority) ?? 2)
+
+        let sourceLabel = label("来源链接", size: 11, color: mutedColor())
+        sourceLabel.translatesAutoresizingMaskIntoConstraints = false
+        let sourceField = NSTextField(string: task.sourceUrl ?? "")
+        sourceField.placeholderString = "飞书文档/群聊链接，可留空"
+        sourceField.translatesAutoresizingMaskIntoConstraints = false
+
+        let detailsLabel = label("详情/备注", size: 11, color: mutedColor())
+        detailsLabel.translatesAutoresizingMaskIntoConstraints = false
+        let detailsScroll = NSScrollView()
+        detailsScroll.translatesAutoresizingMaskIntoConstraints = false
+        detailsScroll.drawsBackground = false
+        detailsScroll.hasVerticalScroller = true
+        detailsScroll.borderType = .bezelBorder
+        let detailsText = NSTextView()
+        detailsText.isEditable = true
+        detailsText.isSelectable = true
+        detailsText.drawsBackground = true
+        detailsText.backgroundColor = NSColor.textBackgroundColor
+        detailsText.textColor = NSColor.textColor
+        detailsText.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        detailsText.textContainerInset = NSSize(width: 6, height: 6)
+        detailsText.string = task.details ?? ""
+        detailsScroll.documentView = detailsText
+
+        let cancelButton = NSButton(title: "取消", target: nil, action: nil)
+        cancelButton.bezelStyle = .rounded
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+
+        let saveButton = NSButton(title: "保存", target: nil, action: nil)
+        saveButton.bezelStyle = .rounded
+        saveButton.keyEquivalent = "\r"
+        saveButton.translatesAutoresizingMaskIntoConstraints = false
+
+        let views: [NSView] = [
+            heading,
+            titleLabel, titleField,
+            dueLabel, duePicker,
+            projectLabel, projectField,
+            priorityLabel, priorityPopup,
+            sourceLabel, sourceField,
+            detailsLabel, detailsScroll,
+            cancelButton, saveButton
+        ]
+        views.forEach { content.addSubview($0) }
+
+        NSLayoutConstraint.activate([
+            heading.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
+            heading.topAnchor.constraint(equalTo: content.topAnchor, constant: 22),
+
+            titleLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            titleLabel.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 18),
+            titleField.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            titleField.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+            titleField.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            titleField.heightAnchor.constraint(equalToConstant: 28),
+
+            dueLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            dueLabel.topAnchor.constraint(equalTo: titleField.bottomAnchor, constant: 12),
+            duePicker.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            duePicker.topAnchor.constraint(equalTo: dueLabel.bottomAnchor, constant: 4),
+            duePicker.widthAnchor.constraint(equalToConstant: 240),
+            duePicker.heightAnchor.constraint(equalToConstant: 28),
+
+            priorityLabel.leadingAnchor.constraint(equalTo: duePicker.trailingAnchor, constant: 16),
+            priorityLabel.centerYAnchor.constraint(equalTo: dueLabel.centerYAnchor),
+            priorityPopup.leadingAnchor.constraint(equalTo: priorityLabel.leadingAnchor),
+            priorityPopup.topAnchor.constraint(equalTo: priorityLabel.bottomAnchor, constant: 4),
+            priorityPopup.widthAnchor.constraint(equalToConstant: 90),
+            priorityPopup.heightAnchor.constraint(equalToConstant: 28),
+
+            projectLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            projectLabel.topAnchor.constraint(equalTo: duePicker.bottomAnchor, constant: 12),
+            projectField.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            projectField.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+            projectField.topAnchor.constraint(equalTo: projectLabel.bottomAnchor, constant: 4),
+            projectField.heightAnchor.constraint(equalToConstant: 28),
+
+            sourceLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            sourceLabel.topAnchor.constraint(equalTo: projectField.bottomAnchor, constant: 12),
+            sourceField.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            sourceField.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+            sourceField.topAnchor.constraint(equalTo: sourceLabel.bottomAnchor, constant: 4),
+            sourceField.heightAnchor.constraint(equalToConstant: 28),
+
+            detailsLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            detailsLabel.topAnchor.constraint(equalTo: sourceField.bottomAnchor, constant: 12),
+            detailsScroll.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            detailsScroll.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+            detailsScroll.topAnchor.constraint(equalTo: detailsLabel.bottomAnchor, constant: 4),
+            detailsScroll.bottomAnchor.constraint(equalTo: saveButton.topAnchor, constant: -16),
+
+            saveButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+            saveButton.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -18),
+            saveButton.widthAnchor.constraint(equalToConstant: 96),
+
+            cancelButton.trailingAnchor.constraint(equalTo: saveButton.leadingAnchor, constant: -10),
+            cancelButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
+            cancelButton.widthAnchor.constraint(equalToConstant: 96),
+        ])
+
+        cancelButton.target = self
+        cancelButton.action = #selector(closeModalPanel(_:))
+        cancelButton.tag = 0
+
+        saveButton.target = self
+        saveButton.action = #selector(closeModalPanel(_:))
+        saveButton.tag = 1
+
+        panel.makeFirstResponder(titleField)
+        let response = NSApp.runModal(for: panel)
+
+        if response == .OK {
+            let taskTitle = titleField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !taskTitle.isEmpty {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                result = TaskEditDraft(
+                    title: taskTitle,
+                    dueDate: formatter.string(from: duePicker.dateValue),
+                    project: projectField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
+                    priority: selectedPopupValue(priorityPopup),
+                    sourceUrl: sourceField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
+                    details: detailsText.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+            }
+        }
+
+        panel.close()
+        return result
+    }
+
+    private func parsedDueDate(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        if let date = formatter.date(from: value) { return date }
+        formatter.dateFormat = "yyyy-MM-dd"
+        if let date = formatter.date(from: value) { return date }
+        return nil
     }
 
     private func recognizedContextPreview(_ text: String) -> String {
@@ -2093,15 +2802,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func migrateLegacyCutePanelSizeIfNeeded() {
-        guard preferences.displayStyle == "cute" else { return }
-        let isOutsideCompactRange = preferences.expandedPanelWidth > 440
-            || preferences.expandedPanelHeight > 520
-            || preferences.expandedPanelWidth < 320
-            || preferences.expandedPanelHeight < 220
-        guard isOutsideCompactRange else { return }
-        preferences.expandedPanelWidth = 420
-        preferences.expandedPanelHeight = 360
-        savePreferences()
+        var changed = false
+        if preferences.displayStyle == "cute" {
+            preferences.displayStyle = "refined"
+            changed = true
+        }
+        let clampedWidth = min(560, max(320, preferences.expandedPanelWidth))
+        let clampedHeight = min(520, max(220, preferences.expandedPanelHeight))
+        if clampedWidth != preferences.expandedPanelWidth || clampedHeight != preferences.expandedPanelHeight {
+            preferences.expandedPanelWidth = clampedWidth
+            preferences.expandedPanelHeight = clampedHeight
+            changed = true
+        }
+        if changed { savePreferences() }
     }
 
     private func loadPetState() -> PetState {
@@ -2168,9 +2881,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func frameForCurrentMode() -> NSRect {
         let size: NSSize
         if isExpanded, preferences.displayStyle == "cute" {
-            let width = min(max(preferences.expandedPanelWidth, 320), 440)
-            let height = min(max(preferences.expandedPanelHeight, 220), 520)
-            size = NSSize(width: width, height: height)
+            // cute 模式宽度固定 320，高度按内容自适应并限制在合理范围
+            let height = min(max(preferences.expandedPanelHeight, 200), 600)
+            size = NSSize(width: 320, height: height)
         } else if isExpanded {
             let expandedSide = min(max(min(preferences.expandedPanelWidth, preferences.expandedPanelHeight), 240), 640)
             size = NSSize(width: expandedSide, height: expandedSide)
