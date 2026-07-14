@@ -19,6 +19,7 @@
     "lark:fields": "node scripts/aime-lark-sync.mjs fields",
     "lark:migrate-context-fields": "node scripts/aime-lark-sync.mjs migrate-context-fields",
     "lark:pull": "node scripts/aime-lark-sync.mjs pull",
+    "lark:assistant-signal": "node scripts/aime-lark-sync.mjs assistant-signal",
     "lark:create": "node scripts/aime-lark-sync.mjs create",
     "lark:complete": "node scripts/aime-lark-sync.mjs complete",
     "lark:ignore": "node scripts/aime-lark-sync.mjs ignore",

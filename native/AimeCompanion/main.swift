@@ -126,6 +126,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var setupActionButton: NSButton?
     private var assistantIdField: NSTextField?
     private var autoRefreshTimer: Timer?
+    private var assistantSignalTimer: Timer?
+    private var assistantSignalCheckRunning = false
     private var screenMonitorTimer: Timer?
     private var petState = PetState()
     private var walkReturnTimer: Timer?
@@ -1649,6 +1651,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         autoRefreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             self?.performAutoRefresh()
         }
+        assistantSignalTimer?.invalidate()
+        assistantSignalTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            self?.performAssistantSignalCheck()
+        }
+        performAssistantSignalCheck()
+    }
+
+    private func performAssistantSignalCheck() {
+        guard !assistantSignalCheckRunning else { return }
+        assistantSignalCheckRunning = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self else { return }
+            let (output, succeeded) = self.runSyncCommandReturningOutput(["assistant-signal"])
+            let changed = succeeded && self.assistantSignalChanged(output)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.assistantSignalCheckRunning = false
+                if changed {
+                    self.performAutoRefresh()
+                }
+            }
+        }
+    }
+
+    private func assistantSignalChanged(_ output: String) -> Bool {
+        guard
+            let data = output.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return false }
+        return json["changed"] as? Bool == true
     }
 
     private func performAutoRefresh() {
@@ -1982,6 +2014,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func quit() {
         autoRefreshTimer?.invalidate()
+        assistantSignalTimer?.invalidate()
         screenMonitorTimer?.invalidate()
         walkReturnTimer?.invalidate()
         NSApp.terminate(nil)

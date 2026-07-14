@@ -9,6 +9,7 @@ const localConfigPath = resolve(projectRoot, "config/aime-base.local.json");
 const defaultConfigPath = localConfigPath;
 const authStatePath = resolve(projectRoot, "tmp/aime-lark-auth.json");
 const setupStatePath = resolve(projectRoot, "tmp/aime-setup-state.json");
+const assistantCursorPath = resolve(projectRoot, "tmp/aime-assistant-cursor.json");
 
 const DEFAULT_AIME_ASSISTANT_OPEN_ID = process.env.AIME_ASSISTANT_OPEN_ID ?? "";
 const DEFAULT_AIME_ASSISTANT_APP_ID = process.env.AIME_ASSISTANT_APP_ID ?? "";
@@ -97,6 +98,12 @@ function main() {
       {
       const config = readConfig(getFlag(args, "--config") ?? defaultConfigPath);
       pull(config);
+      return;
+      }
+    case "assistant-signal":
+      {
+      const config = readConfig(getFlag(args, "--config") ?? defaultConfigPath);
+      checkAssistantSignal(config, getFlag(args, "--cursor") ?? assistantCursorPath);
       return;
       }
     case "create":
@@ -331,6 +338,10 @@ function setupWorkspace({ configPath, name, tableName, assistantOpenId, assistan
 
   writeJson(setupStatePath, { step: "binding_assistant", at: new Date().toISOString() });
   const bindResult = bindAimeAssistant(config, assistantOpenId, assistantAppId, assistantChatId);
+  if (assistantChatId?.startsWith("oc_")) {
+    config.assistantChatId = assistantChatId;
+    writeJson(configPath, config);
+  }
 
   writeJson(setupStatePath, { step: "complete", configPath, config, bindResult, at: new Date().toISOString() });
   console.log(JSON.stringify({ step: "complete", configPath, config, bindResult }));
@@ -360,11 +371,14 @@ function bindAssistantCommand({ configPath, assistantOpenId, assistantAppId, ass
   }
   const bindResult = bindAimeAssistant(config, resolvedOpenId, resolvedAppId, resolvedChatId);
   if (bindResult.bound) {
+    if (resolvedChatId?.startsWith("oc_")) {
+      config.assistantChatId = resolvedChatId;
+    }
     const assistantUrl = buildAssistantUrl(bindResult);
     if (assistantUrl) {
       config.assistantUrl = assistantUrl;
-      writeJson(configPath, config);
     }
+    writeJson(configPath, config);
   }
   printJson({ ok: bindResult.bound, bindResult, assistantUrl: config.assistantUrl });
   if (!bindResult.bound) {
@@ -653,6 +667,33 @@ function sleepMs(ms) {
 }
 
 function selfTest() {
+  assert(
+    resolveAssistantChatId({ assistantChatId: "oc_direct" }) === "oc_direct",
+    "assistant signal should prefer an explicit chat id"
+  );
+  assert(
+    resolveAssistantChatId({ assistantUrl: "https://applink.feishu.cn/client/chat/open?openChatId=oc_from_url" }) === "oc_from_url",
+    "assistant signal should resolve a chat id from the assistant URL"
+  );
+  assert(
+    detectAssistantMessageChange([], undefined).changed === false,
+    "an empty conversation should not trigger a Base pull"
+  );
+  const initialSignal = detectAssistantMessageChange([
+    { message_position: "10", sender: { sender_type: "app" } },
+  ], undefined);
+  assert(initialSignal.initialized === true && initialSignal.changed === false, "first signal check should initialize without notifying");
+  const userOnlySignal = detectAssistantMessageChange([
+    { message_position: "11", sender: { sender_type: "user" } },
+    { message_position: "10", sender: { sender_type: "app" } },
+  ], "10");
+  assert(userOnlySignal.changed === false, "new user messages should not trigger a Base pull");
+  const botSignal = detectAssistantMessageChange([
+    { message_position: "12", sender: { sender_type: "app" } },
+    { message_position: "11", sender: { sender_type: "user" } },
+  ], "10");
+  assert(botSignal.changed === true && botSignal.cursor === "12", "new bot messages should trigger a Base pull");
+
   const baseConfig = buildWorkspaceConfig({
     baseToken: "base_token",
     tableId: "table_id",
@@ -989,6 +1030,63 @@ function pull(config) {
     writeJson(outputPath, { tasks, pulledAt: new Date().toISOString() });
   }
   printJson({ tasks, count: tasks.length, pulledAt: new Date().toISOString() });
+}
+
+function resolveAssistantChatId(config) {
+  if (typeof config?.assistantChatId === "string" && config.assistantChatId.startsWith("oc_")) {
+    return config.assistantChatId;
+  }
+  const match = String(config?.assistantUrl ?? "").match(/[?&]openChatId=(oc_[A-Za-z0-9_-]+)/);
+  return match?.[1];
+}
+
+function detectAssistantMessageChange(messages, previousCursor) {
+  const positioned = messages
+    .map((message) => ({ ...message, position: Number(message.message_position) }))
+    .filter((message) => Number.isFinite(message.position))
+    .sort((left, right) => right.position - left.position);
+  if (positioned.length === 0) {
+    return { changed: false, initialized: previousCursor == null, cursor: previousCursor };
+  }
+  const cursor = String(positioned[0].message_position);
+  if (previousCursor == null) return { changed: false, initialized: true, cursor };
+  const previousPosition = Number(previousCursor);
+  const changed = positioned.some((message) =>
+    message.position > previousPosition &&
+    (message.sender?.sender_type === "app" || message.sender?.id_type === "app_id")
+  );
+  return { changed, initialized: false, cursor };
+}
+
+function checkAssistantSignal(config, cursorPath) {
+  const chatId = resolveAssistantChatId(config);
+  if (!chatId) {
+    printJson({ ok: true, configured: false, changed: false, initialized: false });
+    return;
+  }
+  const envelope = runLarkJson([
+    "im",
+    "+chat-messages-list",
+    "--chat-id",
+    chatId,
+    "--as",
+    config.identity ?? "user",
+    "--page-size",
+    "20",
+    "--no-reactions",
+    "--format",
+    "json",
+  ]);
+  const messages = envelope?.data?.messages ?? envelope?.messages ?? [];
+  const previousCursor = existsSync(cursorPath)
+    ? tryParseJson(readFileSync(cursorPath, "utf8"))?.messagePosition
+    : undefined;
+  const signal = detectAssistantMessageChange(messages, previousCursor);
+  if (signal.cursor) {
+    mkdirSync(dirname(cursorPath), { recursive: true });
+    writeFileSync(cursorPath, `${JSON.stringify({ messagePosition: signal.cursor, checkedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
+  }
+  printJson({ ok: true, configured: true, chatId, ...signal });
 }
 
 function migrateContextFields(configPath, config) {
@@ -1473,6 +1571,7 @@ function printUsageAndExit() {
   npm run lark:fields -- [--config config/aime-base.example.json]
   npm run lark:migrate-context-fields -- [--config config/aime-base.local.json]
   npm run lark:pull -- [--config config/aime-base.example.json] [--out tmp/aime-tasks.json]
+  npm run lark:assistant-signal -- [--config config/aime-base.local.json]
   npm run lark:create -- --title "Task title" [--due-date "YYYY-MM-DD HH:mm:ss"] [--project "Project"] [--priority P2] [--source-type "个人创建"] [--source-url "https://..."] [--details "Task details"] [--source-excerpt "Evidence summary"] [--result "Outcome"]
   npm run lark:complete -- --record-id rec_xxx
   npm run lark:ignore -- --record-id rec_xxx

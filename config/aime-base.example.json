@@ -3,6 +3,7 @@
   "tableId": "your_table_id",
   "viewId": "your_view_id",
   "identity": "user",
+  "assistantChatId": "oc_your_aime_chat_id",
   "limit": 100,
   "baseUrl": "https://your-domain.larkoffice.com/base/your_base_token?table=your_table_id&view=your_view_id",
   "statusOpenValue": "未开始",
