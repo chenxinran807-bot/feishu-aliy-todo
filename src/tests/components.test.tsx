@@ -327,7 +327,7 @@ describe("Aime companion redesign", () => {
 
     const fullView = render(<App />);
 
-    fireEvent.change(await screen.findByLabelText("交给 Aime 处理"), {
+    fireEvent.change(await screen.findByLabelText("交给飞书机器人处理"), {
       target: { value: "会议纪要：1. 周五前整理渠道清单" },
     });
     fireEvent.click(screen.getByRole("button", { name: "生成待确认任务" }));

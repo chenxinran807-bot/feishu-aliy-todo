@@ -481,9 +481,9 @@ function printAimeConfigCommand({ configPath }) {
   const userOpenId = fetchCurrentUserOpenId();
   const openIdLine = userOpenId
     ? `- user open_id：${userOpenId}`
-    : "- user open_id：<请向 Aime 发送「帮我获取我的飞书 open_id」并填入>";
+    : "- user open_id：<请向飞书机器人发送「帮我获取我的飞书 open_id」并填入>";
 
-  const text = `请帮我配置一套 Aime Todo 自动巡检工作流，要求如下：
+  const text = `请帮我配置一套飞书待办自动巡检工作流，要求如下：
 1. 巡检范围：飞书私聊、群聊、会议纪要、妙记逐字稿
 2. 发现疑似 Todo 时，必须先私聊我发"候选待办清单"，不得直接写入 Base
 3. 只有我明确确认后，才能写入 Base，并同步到飞书任务

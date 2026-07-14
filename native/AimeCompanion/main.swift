@@ -165,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         window.isMovableByWindowBackground = true
         window.delegate = self
-        window.title = "Aime Task Companion"
+        window.title = "飞书待办"
         window.contentView = buildContentView(frame: frame)
 
         updateWindowResizeBounds()
@@ -218,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         title.alignment = .center
         rootStack.addArrangedSubview(title)
 
-        let subtitle = label("点击下面按钮，一键完成飞书授权、创建多维表格并绑定 Aime 助手。", size: 11, weight: .regular, color: .secondaryLabelColor)
+        let subtitle = label("点击下面按钮，一键完成飞书授权、创建多维表格并绑定飞书机器人。", size: 11, weight: .regular, color: .secondaryLabelColor)
         subtitle.alignment = .center
         rootStack.addArrangedSubview(subtitle)
 
@@ -261,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         """
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(message, forType: .string)
-        updateSetupState("Base 链接和引导语已复制到剪贴板。\n直接粘贴给 Aime 助理即可。")
+        updateSetupState("Base 链接和引导语已复制到剪贴板。\n直接粘贴给飞书机器人即可。")
     }
 
     @objc private func openLarkOpenPlatformApps() {
@@ -269,7 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func copyAimeConfigCommand() {
-        updateSetupState("正在生成 Aime 配置指令…")
+        updateSetupState("正在生成飞书机器人配置指令…")
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let (output, success) = self?.runSyncCommandReturningOutput(["print-aime-config"]) ?? ("", false)
             guard success else {
@@ -289,7 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             DispatchQueue.main.async {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
-                self?.updateSetupState("Aime 配置指令已复制到剪贴板。\n直接粘贴给 Aime 助理即可。")
+                self?.updateSetupState("飞书机器人配置指令已复制到剪贴板。\n直接粘贴给飞书机器人即可。")
             }
         }
     }
@@ -304,7 +304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         title.alignment = .center
         rootStack.addArrangedSubview(title)
 
-        let subtitle = label("Aime 助手需要在 Aime 页面创建；创建后去飞书开放平台查看应用详情，复制以 cli_ 开头的应用 ID 粘贴到下方。", size: 11, weight: .regular, color: .secondaryLabelColor)
+        let subtitle = label("请先创建飞书机器人；然后前往飞书开放平台查看应用详情，将以 cli_ 开头的应用 ID 粘贴到下方。", size: 11, weight: .regular, color: .secondaryLabelColor)
         subtitle.alignment = .center
         subtitle.lineBreakMode = .byWordWrapping
         subtitle.maximumNumberOfLines = 3
@@ -313,7 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         subtitle.widthAnchor.constraint(equalToConstant: contentWidth()).isActive = true
         rootStack.addArrangedSubview(subtitle)
 
-        let createButton = NSButton(title: "1. 去 Aime 页面创建助理", target: self, action: #selector(openAimeAssistantConfigPage))
+        let createButton = NSButton(title: "1. 创建飞书机器人", target: self, action: #selector(openAimeAssistantConfigPage))
         createButton.bezelStyle = .rounded
         rootStack.addArrangedSubview(createButton)
 
@@ -322,14 +322,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         rootStack.addArrangedSubview(idButton)
 
         let input = NSTextField(string: "")
-        input.placeholderString = "粘贴 Aime 助手应用 ID（cli_xxx）"
+        input.placeholderString = "粘贴飞书机器人应用 ID（cli_xxx）"
         input.bezelStyle = .roundedBezel
         input.translatesAutoresizingMaskIntoConstraints = false
         input.widthAnchor.constraint(equalToConstant: contentWidth()).isActive = true
         rootStack.addArrangedSubview(input)
         assistantIdField = input
 
-        let bindButton = NSButton(title: "绑定 Aime 助手", target: self, action: #selector(bindAssistantFromInput))
+        let bindButton = NSButton(title: "绑定飞书机器人", target: self, action: #selector(bindAssistantFromInput))
         bindButton.bezelStyle = .rounded
         rootStack.addArrangedSubview(bindButton)
         setupActionButton = bindButton
@@ -338,7 +338,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         copyButton.bezelStyle = .rounded
         rootStack.addArrangedSubview(copyButton)
 
-        let aimeConfigButton = NSButton(title: "复制 Aime 配置指令", target: self, action: #selector(copyAimeConfigCommand))
+        let aimeConfigButton = NSButton(title: "复制机器人配置指令", target: self, action: #selector(copyAimeConfigCommand))
         aimeConfigButton.bezelStyle = .rounded
         rootStack.addArrangedSubview(aimeConfigButton)
 
@@ -362,18 +362,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func bindAssistantFromInput() {
         guard let input = assistantIdField, !input.stringValue.isEmpty else {
-            updateSetupState("请先输入 Aime 助手 ID")
+            updateSetupState("请先输入飞书机器人 ID")
             return
         }
         let value = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard value.hasPrefix("cli_") || value.hasPrefix("ou_") || value.hasPrefix("oc_") else {
-            updateSetupState("ID 格式不正确。请输入以 cli_、ou_ 或 oc_ 开头的 Aime 助手 ID。")
+            updateSetupState("ID 格式不正确。请输入以 cli_、ou_ 或 oc_ 开头的飞书机器人 ID。")
             return
         }
         let args = ["bind-assistant", "--assistant-id", value]
 
-        updateSetupState("正在绑定 Aime 助手…")
+        updateSetupState("正在绑定飞书机器人…")
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let (output, success) = self?.runSyncCommandReturningOutput(args) ?? ("", false)
@@ -386,7 +386,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 } else if output.localizedStandardContains("\"scopeMissing\":true") || output.localizedStandardContains("docs:permission.member:create") {
                     self?.updateSetupState("需要额外的飞书权限才能绑定助手。\n请在终端运行：\nlark-cli auth login --scope \"docs:permission.member:create\"\n授权后重试。")
                 } else {
-                    let reason = self?.parseBindFailureReason(output) ?? "绑定失败，请确认 ID 正确且已在 Aime 页面创建助理。"
+                    let reason = self?.parseBindFailureReason(output) ?? "绑定失败，请确认 ID 正确且已创建飞书机器人。"
                     self?.updateSetupState(reason)
                 }
             }
@@ -396,12 +396,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func parseBindFailureReason(_ output: String) -> String {
         guard let data = output.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
-            return "绑定失败，请确认 ID 正确且已在 Aime 页面创建助理。"
+            return "绑定失败，请确认 ID 正确且已创建飞书机器人。"
         }
         if let reason = json["reason"] as? String, !reason.isEmpty {
             return "绑定失败：\(reason)"
         }
-        return "绑定失败，请确认 ID 正确且已在 Aime 页面创建助理。"
+        return "绑定失败，请确认 ID 正确且已创建飞书机器人。"
     }
 
     private func updateSetupState(_ text: String) {
@@ -488,7 +488,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 case "creating_base":
                     self.updateSetupState("授权成功，正在创建多维表格…")
                 case "binding_assistant":
-                    self.updateSetupState("正在绑定 Aime 助手…")
+                    self.updateSetupState("正在绑定飞书机器人…")
                 case "complete":
                     if let bindResult = json["bindResult"] as? [String: Any],
                        let bound = bindResult["bound"] as? Bool, !bound {
@@ -1452,8 +1452,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func styleTitle() -> String {
         switch preferences.displayStyle {
-        case "minimal": return "Aime"
-        case "cute": return "Aime 待办"
+        case "minimal": return "飞书待办"
+        case "cute": return "飞书待办"
         default: return "任务伴随"
         }
     }
@@ -1521,7 +1521,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } catch {
             print("Aime task feed unavailable at \(taskFeedPath): \(error.localizedDescription)")
             return [
-                AimeTask(id: "sample-1", title: "运行 npm run lark:pull 同步 Aime Base", status: "open", dueDate: todayKey(), project: "AI探索", sourceUrl: nil),
+                AimeTask(id: "sample-1", title: "运行 npm run lark:pull 同步飞书 Base", status: "open", dueDate: todayKey(), project: "AI探索", sourceUrl: nil),
                 AimeTask(id: "sample-2", title: "确认桌面小组件可见", status: "done", dueDate: todayKey(), project: "AI探索", sourceUrl: nil),
             ]
         }
@@ -1535,14 +1535,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func createStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "Aime"
-        statusItem.button?.toolTip = "Aime 待办伴随"
+        statusItem.button?.title = "待办"
+        statusItem.button?.toolTip = "飞书待办"
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "显示面板", action: #selector(showWidget), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "展开待办", action: #selector(expandWidget), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "重置位置并显示", action: #selector(resetWindowPositionAndShow), keyEquivalent: "0"))
         menu.addItem(NSMenuItem(title: "打开多维表格", action: #selector(openAimeBase), keyEquivalent: "b"))
-        menu.addItem(NSMenuItem(title: "打开 Aime 助手", action: #selector(openAimeAssistant), keyEquivalent: "a"))
+        menu.addItem(NSMenuItem(title: "打开飞书机器人", action: #selector(openAimeAssistant), keyEquivalent: "a"))
         menu.addItem(NSMenuItem(title: "刷新", action: #selector(refreshClicked), keyEquivalent: "r"))
         menu.addItem(NSMenuItem(title: "退出", action: #selector(quit), keyEquivalent: "q"))
         statusItem.menu = menu
@@ -1611,7 +1611,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         addMenuItem("新增待办", to: menu, action: #selector(addTaskClicked))
         menu.addItem(NSMenuItem.separator())
         addMenuItem("打开多维表格", to: menu, action: #selector(openAimeBase))
-        addMenuItem("打开 Aime 助手", to: menu, action: #selector(openAimeAssistant))
+        addMenuItem("打开飞书机器人", to: menu, action: #selector(openAimeAssistant))
         menu.addItem(NSMenuItem.separator())
         addPayloadMenuItem("风格：简洁", payload: "minimal", to: menu, action: #selector(changeDisplayStyle(_:)))
         addPayloadMenuItem("风格：精致", payload: "refined", to: menu, action: #selector(changeDisplayStyle(_:)))
@@ -1695,7 +1695,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if lastKnownTaskCount > previousTaskCount {
             let deltaTasks = lastKnownTaskCount - previousTaskCount
             showStatusNotification(
-                title: preferences.displayStyle == "cute" ? "有新待办" : "Aime 有新待办",
+                title: "有新待办",
                 body: preferences.displayStyle == "cute"
                     ? "新增 \(deltaTasks) 个待办，点开查看。"
                     : "新增 \(deltaTasks) 个待办，点开看看。"

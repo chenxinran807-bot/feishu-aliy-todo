@@ -24,12 +24,12 @@ export function ManualCaptureForm({ onCapture }: ManualCaptureFormProps) {
 
   return (
     <form className="manual-capture-form" onSubmit={handleSubmit}>
-      <label htmlFor="manual-capture-text">交给 Aime 处理</label>
+      <label htmlFor="manual-capture-text">交给飞书机器人处理</label>
       <textarea
         id="manual-capture-text"
         value={textContext}
         onChange={(event) => setTextContext(event.currentTarget.value)}
-        placeholder="粘贴会议纪要、聊天记录，或直接告诉 Aime 要新增什么任务"
+        placeholder="粘贴会议纪要、聊天记录，或直接告诉飞书机器人要新增什么任务"
       />
       <button type="submit">生成待确认任务</button>
     </form>

@@ -53,7 +53,7 @@ export function generateSuggestions(input: GenerateSuggestionsInput): ProactiveS
         suggestions.push({
           id,
           type: "create_task",
-          title: "确认 Aime 提炼的任务",
+          title: "确认飞书机器人提炼的任务",
           body: draft.title,
           confidence: 0.78,
           sourceEventIds: [event.id],

@@ -2,7 +2,7 @@
   "name": "aime-desktop-task-companion",
   "version": "0.1.0",
   "private": true,
-  "description": "Mac-first desktop task companion for Aime todo monitoring.",
+  "description": "Mac-first desktop companion for Feishu task monitoring.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 6173 --strictPort",

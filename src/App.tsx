@@ -70,7 +70,7 @@ export function App() {
   if (!snapshot || !view) {
     return (
       <main className="widget-shell">
-        <p>Loading Aime...</p>
+        <p>正在加载飞书待办...</p>
       </main>
     );
   }

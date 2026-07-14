@@ -1,16 +1,16 @@
-# Aime Chat Refresh Signal Implementation Plan
+# Feishu Bot Chat Refresh Signal Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Refresh the desktop task panel shortly after the Aime bot posts a new message, while keeping Feishu Base as the only task source of truth.
+**Goal:** Refresh the desktop task panel shortly after the Feishu bot posts a new message, while keeping Feishu Base as the only task source of truth.
 
-**Architecture:** Add a read-only sync-script command that fetches the newest Aime conversation messages, remembers the latest message position in a local cursor file, and reports whether a new bot-authored message appeared. The native app checks that signal every 15 seconds and pulls Base only when it changes; the existing five-minute Base pull remains the recovery path.
+**Architecture:** Add a read-only sync-script command that fetches the newest Feishu bot conversation messages, remembers the latest message position in a local cursor file, and reports whether a new bot-authored message appeared. The native app checks that signal every 15 seconds and pulls Base only when it changes; the existing five-minute Base pull remains the recovery path.
 
 **Tech Stack:** Node.js ESM, `lark-cli im +chat-messages-list`, Swift/AppKit timers, existing self-test and native packaging checks.
 
 ---
 
-### Task 1: Incremental Aime message signal
+### Task 1: Incremental Feishu bot message signal
 
 **Files:**
 - Modify: `scripts/aime-lark-sync.mjs`
@@ -37,7 +37,7 @@
 - Modify: `README.md`
 - Modify: `package.json`
 
-- [x] Document the Aime conversation signal, Base source-of-truth rule, and polling fallback.
+- [x] Document the Feishu bot conversation signal, Base source-of-truth rule, and polling fallback.
 - [x] Add a package command for a manual signal check.
 - [x] Run self-test, frontend tests, lint, build, and native packaging.
 - [x] Review the diff and commit the implementation.
