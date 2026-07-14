@@ -38,6 +38,9 @@ struct PetStateTests {
         assertEqual(LocalPreferences().displayStyle, "refined", "default display style should be the native refined mode")
         assertEqual(LocalPreferences().expandedPanelWidth, 360, "default panel width should remain compact")
         assertEqual(LocalPreferences().expandedPanelHeight, 260, "default panel height should remain compact")
+        assertEqual(TaskPanelVisualPolicy.usesFeishuNativeLayout(displayStyle: "refined"), true, "refined mode should use the Feishu-native layout")
+        assertEqual(TaskPanelVisualPolicy.usesFeishuNativeLayout(displayStyle: "cute"), true, "legacy style values should not restore the old card layout")
+        assertEqual(TaskPanelVisualPolicy.summary(openCount: 14, overdueCount: 3), "14 项待办 · 3 项逾期", "task summary should use concise Chinese copy")
 
         let customBrand = DesktopBranding(preferences: LocalPreferences(customDisplayName: "我的飞书雷达", customIcon: "✨"))
         assertEqual(customBrand.displayName, "我的飞书雷达", "users should be able to customize the desktop display name")

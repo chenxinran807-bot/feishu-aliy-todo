@@ -244,6 +244,18 @@ struct LocalPreferences: Codable, Equatable {
     }
 }
 
+struct TaskPanelVisualPolicy {
+    static func usesFeishuNativeLayout(displayStyle: String) -> Bool {
+        true
+    }
+
+    static func summary(openCount: Int, overdueCount: Int) -> String {
+        overdueCount > 0
+            ? "\(openCount) 项待办 · \(overdueCount) 项逾期"
+            : "\(openCount) 项待办"
+    }
+}
+
 struct RecentScenePolicy {
     static func record(openedTaskId: String, existing: [String], limit: Int) -> [String] {
         let cleanId = openedTaskId.trimmingCharacters(in: .whitespacesAndNewlines)

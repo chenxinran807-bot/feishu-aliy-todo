@@ -577,17 +577,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
-        if preferences.displayStyle == "cute" {
-            rootStack.addArrangedSubview(syncStatusRow())
-            rootStack.addArrangedSubview(nativeTaskFilterRow(tasks: sortedTasks))
-            rootStack.addArrangedSubview(webAlignedTaskListPreview(groupedTasks(from: sortedTasks)))
-            fitCuteExpandedWindowToContent()
-            return
-        } else if let statusView = styleStatusView(openCount: actionableTasks.count, overdueCount: overdueTasks.count) {
-            rootStack.addArrangedSubview(statusView)
-        }
-        rootStack.addArrangedSubview(filterView(tasks: tasks))
-        rootStack.addArrangedSubview(taskListView(sortedTasks))
+        rootStack.addArrangedSubview(syncStatusRow())
+        rootStack.addArrangedSubview(nativeTaskFilterRow(tasks: sortedTasks))
+        rootStack.addArrangedSubview(webAlignedTaskListPreview(groupedTasks(from: sortedTasks)))
         rootStack.addArrangedSubview(resizeHandle())
     }
 
@@ -802,30 +794,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
-        row.spacing = preferences.displayStyle == "cute" ? scaledCute(12) : 10
+        row.spacing = 8
 
-        let summaryText = preferences.displayStyle == "cute"
-            ? "\(openCount) 件待办"
-            : "\(openCount) open · \(overdueCount) overdue"
-        let summarySize: CGFloat = preferences.displayStyle == "cute" ? scaledCute(24) : 17
-        let summary = label(summaryText, size: summarySize, weight: .semibold)
+        let summary = label(TaskPanelVisualPolicy.summary(openCount: openCount, overdueCount: overdueCount), size: 17, weight: .semibold)
         let titleStack = NSStackView()
         titleStack.orientation = .vertical
-        titleStack.spacing = preferences.displayStyle == "cute" ? scaledCute(4) : 5
-        titleStack.addArrangedSubview(label(styleTitle(), size: preferences.displayStyle == "cute" ? scaledCute(18) : 12, weight: .bold, color: mutedColor()))
+        titleStack.spacing = 3
+        titleStack.addArrangedSubview(label("飞书待办", size: 12, weight: .semibold, color: mutedColor()))
         titleStack.addArrangedSubview(summary)
-        let collapse = NSButton(title: preferences.displayStyle == "cute" ? "×" : "收起", target: self, action: #selector(collapseWidget))
+        let collapse = NSButton(title: "收起", target: self, action: #selector(collapseWidget))
         collapse.bezelStyle = .rounded
-        collapse.controlSize = usesCompactExpandedLayout() ? .mini : (preferences.displayStyle == "cute" ? .regular : .small)
+        collapse.controlSize = .small
 
         row.addArrangedSubview(titleStack)
-        if preferences.displayStyle == "cute" {
-            row.addArrangedSubview(toolbarButton(title: "+", toolTip: "新增待办", action: #selector(addTaskClicked)))
-        }
-        if preferences.displayStyle != "cute" {
-            let more = menuButton(title: "更多", action: #selector(showHeaderMoreMenu(_:)))
-            row.addArrangedSubview(more)
-        }
+        row.addArrangedSubview(toolbarButton(title: "+", toolTip: "新增待办", action: #selector(addTaskClicked)))
+        let more = menuButton(title: "•••", action: #selector(showHeaderMoreMenu(_:)))
+        more.toolTip = "更多操作"
+        row.addArrangedSubview(more)
         row.addArrangedSubview(collapse)
         return row
     }
@@ -1064,9 +1049,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = scaledCute(14)
+        stack.spacing = 8
 
-        stack.addArrangedSubview(label("待办事项", size: scaledCute(18), weight: .bold, color: mutedColor()))
+        stack.addArrangedSubview(label("待办事项", size: 12, weight: .semibold, color: mutedColor()))
 
         let openTasks = tasks.filter { isActionableStatus($0.status) }
         if openTasks.isEmpty {
@@ -1088,7 +1073,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         taskStack.translatesAutoresizingMaskIntoConstraints = false
         taskStack.orientation = .vertical
         taskStack.alignment = .leading
-        taskStack.spacing = scaledCute(10)
+        taskStack.spacing = 6
         openTasks.forEach { task in
             taskStack.addArrangedSubview(webAlignedTaskRow(task))
         }
@@ -1126,25 +1111,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func visibleTaskListHeight(for count: Int) -> CGFloat {
         let visibleRows = CGFloat(min(max(count, 1), 3))
-        let rowHeight = usesCompactExpandedLayout() ? CGFloat(52) : scaledCute(64)
-        let gapHeight = CGFloat(max(0, Int(visibleRows) - 1)) * scaledCute(10)
-        return visibleRows * rowHeight + gapHeight + scaledCute(2)
+        let rowHeight: CGFloat = 52
+        let gapHeight = CGFloat(max(0, Int(visibleRows) - 1)) * 6
+        return visibleRows * rowHeight + gapHeight + 2
     }
 
     private func webAlignedTaskRow(_ task: AimeTask) -> NSView {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
-        row.spacing = usesCompactExpandedLayout() ? 10 : scaledCute(14)
+        row.spacing = 10
 
         let check = AimeActionButton(title: "", target: self, action: #selector(completeTask(_:)))
         check.payload = task.id
         check.isBordered = false
         check.wantsLayer = true
         check.layer?.backgroundColor = NSColor.clear.cgColor
-        check.layer?.borderWidth = usesCompactExpandedLayout() ? 1.6 : max(2, scaledCute(2.4))
-        check.layer?.borderColor = NSColor(calibratedRed: 0.31, green: 0.28, blue: 0.27, alpha: 1).cgColor
-        let checkSize = usesCompactExpandedLayout() ? CGFloat(18) : scaledCute(24)
+        check.layer?.borderWidth = 1.5
+        check.layer?.borderColor = NSColor.tertiaryLabelColor.cgColor
+        let checkSize: CGFloat = 18
         check.layer?.cornerRadius = checkSize / 2
         check.translatesAutoresizingMaskIntoConstraints = false
         check.widthAnchor.constraint(equalToConstant: checkSize).isActive = true
@@ -1153,12 +1138,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let titleStack = NSStackView()
         titleStack.orientation = .vertical
         titleStack.alignment = .leading
-        titleStack.spacing = scaledCute(3)
+        titleStack.spacing = 2
         titleStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let priority = preferences.priorityByTaskId[task.id] ?? task.priority ?? "P2"
         let isPinned = preferences.pinnedTaskIds.contains(task.id)
-        titleStack.addArrangedSubview(label("\(priority) · \(task.title)", size: usesCompactExpandedLayout() ? 13 : scaledCute(18), weight: .semibold, color: titleColor(priority: priority, isPinned: isPinned)))
-        titleStack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: usesCompactExpandedLayout() ? 11 : scaledCute(13), weight: .medium, color: mutedColor()))
+        titleStack.addArrangedSubview(label("\(priority) · \(task.title)", size: 13, weight: .medium, color: titleColor(priority: priority, isPinned: isPinned)))
+        titleStack.addArrangedSubview(label("\(task.project ?? "未分类") · \(task.dueDate ?? "无截止日期")", size: 11, weight: .regular, color: mutedColor()))
 
         let clickableTitle = clickableTaskTitle(task, content: titleStack)
 
@@ -1338,12 +1323,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         wrapper.wantsLayer = true
         wrapper.layer?.backgroundColor = cardColor(priority: priority, isPinned: isPinned).cgColor
         wrapper.layer?.cornerRadius = cardCornerRadius()
-        wrapper.layer?.borderWidth = preferences.displayStyle == "cute" ? 1 : (isPinned || priority == "P0" ? 2 : 0)
+        wrapper.layer?.borderWidth = 1
         wrapper.layer?.borderColor = borderColor(priority: priority, isPinned: isPinned).cgColor
         content.translatesAutoresizingMaskIntoConstraints = false
         wrapper.addSubview(content)
-        let horizontalPadding: CGFloat = preferences.displayStyle == "cute" ? (usesCompactExpandedLayout() ? 12 : scaledCute(18)) : 10
-        let verticalPadding: CGFloat = preferences.displayStyle == "cute" ? (usesCompactExpandedLayout() ? 10 : scaledCute(16)) : 8
+        let horizontalPadding: CGFloat = 10
+        let verticalPadding: CGFloat = 8
 
         NSLayoutConstraint.activate([
             wrapper.widthAnchor.constraint(equalToConstant: width),
@@ -1371,39 +1356,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func cardColor(priority: String, isPinned: Bool) -> NSColor {
-        if preferences.displayStyle == "cute" {
-            if isPinned { return NSColor.controlAccentColor.withAlphaComponent(0.12) }
-            switch priority {
-            case "P0": return NSColor.systemRed.withAlphaComponent(0.12)
-            case "P1": return NSColor.systemOrange.withAlphaComponent(0.12)
-            case "P2": return NSColor.systemBlue.withAlphaComponent(0.10)
-            default: return NSColor.windowBackgroundColor.withAlphaComponent(0.72)
-            }
-        }
-        if preferences.displayStyle == "minimal" {
-            if isPinned { return NSColor.white.withAlphaComponent(0.9) }
-            switch priority {
-            case "P0": return NSColor(calibratedWhite: 1, alpha: 0.88)
-            case "P1": return NSColor.systemOrange.withAlphaComponent(0.08)
-            case "P2": return NSColor.systemBlue.withAlphaComponent(0.08)
-            default: return NSColor.white.withAlphaComponent(0.72)
-            }
-        }
-        if isPinned { return NSColor(calibratedRed: 1, green: 0.96, blue: 0.76, alpha: 0.92) }
-        switch priority {
-        case "P0": return NSColor(calibratedRed: 1, green: 0.88, blue: 0.86, alpha: 0.9)
-        case "P1": return NSColor(calibratedRed: 1, green: 0.94, blue: 0.86, alpha: 0.9)
-        case "P2": return NSColor(calibratedRed: 0.86, green: 0.93, blue: 1, alpha: 0.9)
-        default: return NSColor.white.withAlphaComponent(0.72)
-        }
+        isPinned
+            ? NSColor.controlAccentColor.withAlphaComponent(0.07)
+            : NSColor.controlBackgroundColor.withAlphaComponent(0.72)
     }
 
     private func cardCornerRadius() -> CGFloat {
-        switch preferences.displayStyle {
-        case "minimal": return 5
-        case "cute": return usesCompactExpandedLayout() ? 12 : scaledCute(26)
-        default: return 9
-        }
+        10
     }
 
     private func panelCornerRadius() -> CGFloat {
@@ -1473,28 +1432,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func borderColor(priority: String, isPinned: Bool) -> NSColor {
-        if preferences.displayStyle == "cute" {
-            if isPinned { return NSColor.controlAccentColor.withAlphaComponent(0.35) }
-            if priority == "P0" { return NSColor.systemRed.withAlphaComponent(0.28) }
-            return NSColor.separatorColor.withAlphaComponent(0.5)
-        }
-        if preferences.displayStyle == "minimal" {
-            if isPinned { return NSColor.secondaryLabelColor }
-            if priority == "P0" { return NSColor.systemRed.withAlphaComponent(0.7) }
-            return NSColor.clear
-        }
-        if isPinned { return NSColor(calibratedRed: 0.9, green: 0.62, blue: 0.05, alpha: 1) }
-        if priority == "P0" { return NSColor.systemRed }
-        return NSColor.clear
+        isPinned
+            ? NSColor.controlAccentColor.withAlphaComponent(0.24)
+            : NSColor.separatorColor.withAlphaComponent(0.38)
     }
 
     private func titleColor(priority: String, isPinned: Bool) -> NSColor {
-        if isPinned { return NSColor(calibratedRed: 0.38, green: 0.25, blue: 0.02, alpha: 1) }
+        if isPinned { return NSColor.controlAccentColor }
         switch priority {
         case "P0": return NSColor.systemRed
-        case "P1": return NSColor.systemOrange
-        case "P2": return NSColor.systemBlue
-        default: return NSColor.secondaryLabelColor
+        default: return NSColor.labelColor
         }
     }
 
@@ -1612,9 +1559,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(NSMenuItem.separator())
         addMenuItem("打开多维表格", to: menu, action: #selector(openAimeBase))
         addMenuItem("打开飞书机器人", to: menu, action: #selector(openAimeAssistant))
-        menu.addItem(NSMenuItem.separator())
-        addPayloadMenuItem("风格：简洁", payload: "minimal", to: menu, action: #selector(changeDisplayStyle(_:)))
-        addPayloadMenuItem("风格：精致", payload: "refined", to: menu, action: #selector(changeDisplayStyle(_:)))
         menu.addItem(NSMenuItem.separator())
         addMenuItem(showingHiddenTasks ? "收起隐藏任务" : "显示隐藏任务", to: menu, action: #selector(toggleShowHiddenTasks))
         addMenuItem("重置面板尺寸", to: menu, action: #selector(resetExpandedPanelSize))
@@ -2836,7 +2780,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func migrateLegacyCutePanelSizeIfNeeded() {
         var changed = false
-        if preferences.displayStyle == "cute" {
+        if preferences.displayStyle != "refined" {
             preferences.displayStyle = "refined"
             changed = true
         }
@@ -2913,13 +2857,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func frameForCurrentMode() -> NSRect {
         let size: NSSize
-        if isExpanded, preferences.displayStyle == "cute" {
-            // cute 模式宽度固定 320，高度按内容自适应并限制在合理范围
-            let height = min(max(preferences.expandedPanelHeight, 200), 600)
-            size = NSSize(width: 320, height: height)
-        } else if isExpanded {
-            let expandedSide = min(max(min(preferences.expandedPanelWidth, preferences.expandedPanelHeight), 240), 640)
-            size = NSSize(width: expandedSide, height: expandedSide)
+        if isExpanded {
+            size = NSSize(
+                width: min(560, max(320, preferences.expandedPanelWidth)),
+                height: min(520, max(220, preferences.expandedPanelHeight))
+            )
         } else {
             size = NSSize(width: 120, height: 104)
         }
