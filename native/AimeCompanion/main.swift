@@ -576,11 +576,127 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
 
-        rootStack.addArrangedSubview(headerRow(openCount: actionableTasks.count, overdueCount: overdueTasks.count))
-        rootStack.addArrangedSubview(syncStatusRow())
-        rootStack.addArrangedSubview(nativeTaskFilterRow(tasks: sortedTasks))
-        rootStack.addArrangedSubview(webAlignedTaskListPreview(groupedTasks(from: sortedTasks)))
-        rootStack.addArrangedSubview(resizeHandle())
+        rootStack.addArrangedSubview(lightweightFeishuPanel(
+            tasks: groupedTasks(from: sortedTasks),
+            openCount: actionableTasks.count,
+            overdueCount: overdueTasks.count
+        ))
+    }
+
+    private func lightweightFeishuPanel(tasks: [AimeTask], openCount: Int, overdueCount: Int) -> NSView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 7
+
+        stack.addArrangedSubview(label(TaskPanelVisualPolicy.headline, size: 18, weight: .bold))
+        stack.addArrangedSubview(label(todaySubtitle(), size: 10, color: mutedColor()))
+        stack.addArrangedSubview(lightweightStats(openCount: openCount, overdueCount: overdueCount))
+
+        let openTasks = Array(tasks.filter { isActionableStatus($0.status) }.prefix(TaskPanelVisualPolicy.previewTaskLimit))
+        if openTasks.isEmpty {
+            stack.addArrangedSubview(label("今天已经清空", size: 13, weight: .medium, color: mutedColor()))
+        } else {
+            openTasks.enumerated().forEach { index, task in
+                stack.addArrangedSubview(lightweightTaskRow(task))
+                if index < openTasks.count - 1 {
+                    let separator = NSBox()
+                    separator.boxType = .separator
+                    separator.translatesAutoresizingMaskIntoConstraints = false
+                    separator.widthAnchor.constraint(equalToConstant: contentWidth()).isActive = true
+                    stack.addArrangedSubview(separator)
+                }
+            }
+        }
+        return stack
+    }
+
+    private func todaySubtitle() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M 月 d 日，EEEE"
+        let sync = lastSyncSucceeded ? "飞书已同步" : "等待飞书同步"
+        return "\(formatter.string(from: Date())) · \(sync)"
+    }
+
+    private func lightweightStats(openCount: Int, overdueCount: Int) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 6
+        let statWidth = max(120, (contentWidth() - 6) / 2)
+        row.addArrangedSubview(lightweightStat(value: openCount, labelText: "今日任务", color: NSColor.controlAccentColor, width: statWidth))
+        row.addArrangedSubview(lightweightStat(value: overdueCount, labelText: "已经逾期", color: NSColor.systemRed, width: statWidth))
+        return row
+    }
+
+    private func lightweightStat(value: Int, labelText: String, color: NSColor, width: CGFloat) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 5
+        row.addArrangedSubview(label(String(value), size: 16, weight: .bold, color: color))
+        row.addArrangedSubview(label(labelText, size: 10, color: mutedColor()))
+
+        let surface = NSView()
+        surface.wantsLayer = true
+        surface.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 0.92).cgColor
+        surface.layer?.cornerRadius = 9
+        row.translatesAutoresizingMaskIntoConstraints = false
+        surface.addSubview(row)
+        NSLayoutConstraint.activate([
+            surface.widthAnchor.constraint(equalToConstant: width),
+            surface.heightAnchor.constraint(equalToConstant: 34),
+            row.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 9),
+            row.trailingAnchor.constraint(lessThanOrEqualTo: surface.trailingAnchor, constant: -8),
+            row.centerYAnchor.constraint(equalTo: surface.centerYAnchor),
+        ])
+        return surface
+    }
+
+    private func lightweightTaskRow(_ task: AimeTask) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 7
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.widthAnchor.constraint(equalToConstant: contentWidth()).isActive = true
+        row.heightAnchor.constraint(equalToConstant: 25).isActive = true
+
+        let check = AimeActionButton(title: "", target: self, action: #selector(completeTask(_:)))
+        check.payload = task.id
+        check.isBordered = false
+        check.wantsLayer = true
+        check.layer?.backgroundColor = NSColor.clear.cgColor
+        check.layer?.borderWidth = 1.5
+        check.layer?.borderColor = NSColor.tertiaryLabelColor.cgColor
+        check.layer?.cornerRadius = 6
+        check.translatesAutoresizingMaskIntoConstraints = false
+        check.widthAnchor.constraint(equalToConstant: 12).isActive = true
+        check.heightAnchor.constraint(equalToConstant: 12).isActive = true
+
+        let title = label(task.title, size: 12, weight: .regular)
+        title.lineBreakMode = .byTruncatingTail
+        let clickable = clickableTaskTitle(task, content: title)
+        clickable.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        clickable.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let meta = label(lightweightTaskMeta(task), size: 10, color: mutedColor())
+        meta.setContentCompressionResistancePriority(.required, for: .horizontal)
+        meta.setContentHuggingPriority(.required, for: .horizontal)
+
+        row.addArrangedSubview(check)
+        row.addArrangedSubview(clickable)
+        row.addArrangedSubview(meta)
+        return row
+    }
+
+    private func lightweightTaskMeta(_ task: AimeTask) -> String {
+        guard let dueDate = task.dueDate, !dueDate.isEmpty else { return "飞书" }
+        if dueDate.hasPrefix(todayKey()), dueDate.count >= 16 {
+            return String(dueDate.dropFirst(11).prefix(5))
+        }
+        return String(dueDate.prefix(10))
     }
 
     private func resizeHandle() -> NSView {
@@ -1543,8 +1659,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func updateWindowResizeBounds() {
-        window.minSize = NSSize(width: 320, height: 220)
-        window.maxSize = NSSize(width: 560, height: 520)
+        let minimum = TaskPanelWindowPolicy.minimumSize(isExpanded: isExpanded)
+        let maximum = TaskPanelWindowPolicy.maximumSize(isExpanded: isExpanded)
+        window.minSize = NSSize(width: minimum.width, height: minimum.height)
+        window.maxSize = NSSize(width: maximum.width, height: maximum.height)
     }
 
     @objc private func refreshClicked() {
@@ -2780,8 +2898,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func migrateLegacyCutePanelSizeIfNeeded() {
         var changed = false
+        if preferences.panelDesignVersion < 2 {
+            preferences.expandedPanelWidth = 360
+            preferences.expandedPanelHeight = 260
+            preferences.panelDesignVersion = 2
+            changed = true
+        }
         if preferences.displayStyle != "refined" {
             preferences.displayStyle = "refined"
+            changed = true
+        }
+        if preferences.expandedPanelWidth >= 560 && preferences.expandedPanelHeight >= 520 {
+            preferences.expandedPanelWidth = 360
+            preferences.expandedPanelHeight = 260
             changed = true
         }
         let clampedWidth = min(560, max(320, preferences.expandedPanelWidth))

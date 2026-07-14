@@ -136,6 +136,7 @@ struct LocalPreferences: Codable, Equatable {
     var feishuSyncEnabled: Bool = false
     var expandedPanelWidth: Double = 360
     var expandedPanelHeight: Double = 260
+    var panelDesignVersion: Int = 2
     var displayStyle: String = "refined"
     var sortKey: String = "priority"
     var sortAscending: Bool = false
@@ -159,6 +160,7 @@ struct LocalPreferences: Codable, Equatable {
         feishuSyncEnabled: Bool = false,
         expandedPanelWidth: Double = 360,
         expandedPanelHeight: Double = 260,
+        panelDesignVersion: Int = 2,
         displayStyle: String = "refined",
         sortKey: String = "priority",
         sortAscending: Bool = false,
@@ -181,6 +183,7 @@ struct LocalPreferences: Codable, Equatable {
         self.feishuSyncEnabled = feishuSyncEnabled
         self.expandedPanelWidth = expandedPanelWidth
         self.expandedPanelHeight = expandedPanelHeight
+        self.panelDesignVersion = panelDesignVersion
         self.displayStyle = displayStyle
         self.sortKey = sortKey
         self.sortAscending = sortAscending
@@ -205,6 +208,7 @@ struct LocalPreferences: Codable, Equatable {
         case feishuSyncEnabled
         case expandedPanelWidth
         case expandedPanelHeight
+        case panelDesignVersion
         case displayStyle
         case sortKey
         case sortAscending
@@ -230,6 +234,7 @@ struct LocalPreferences: Codable, Equatable {
         self.feishuSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .feishuSyncEnabled) ?? false
         self.expandedPanelWidth = try container.decodeIfPresent(Double.self, forKey: .expandedPanelWidth) ?? 360
         self.expandedPanelHeight = try container.decodeIfPresent(Double.self, forKey: .expandedPanelHeight) ?? 260
+        self.panelDesignVersion = try container.decodeIfPresent(Int.self, forKey: .panelDesignVersion) ?? 0
         self.displayStyle = try container.decodeIfPresent(String.self, forKey: .displayStyle) ?? "refined"
         self.sortKey = try container.decodeIfPresent(String.self, forKey: .sortKey) ?? "priority"
         self.sortAscending = try container.decodeIfPresent(Bool.self, forKey: .sortAscending) ?? false
@@ -245,6 +250,9 @@ struct LocalPreferences: Codable, Equatable {
 }
 
 struct TaskPanelVisualPolicy {
+    static let previewTaskLimit = 3
+    static let headline = "今天"
+
     static func usesFeishuNativeLayout(displayStyle: String) -> Bool {
         true
     }
@@ -253,6 +261,25 @@ struct TaskPanelVisualPolicy {
         overdueCount > 0
             ? "\(openCount) 项待办 · \(overdueCount) 项逾期"
             : "\(openCount) 项待办"
+    }
+}
+
+struct TaskPanelSize: Equatable {
+    let width: Double
+    let height: Double
+}
+
+struct TaskPanelWindowPolicy {
+    static func minimumSize(isExpanded: Bool) -> TaskPanelSize {
+        isExpanded
+            ? TaskPanelSize(width: 320, height: 220)
+            : TaskPanelSize(width: 120, height: 104)
+    }
+
+    static func maximumSize(isExpanded: Bool) -> TaskPanelSize {
+        isExpanded
+            ? TaskPanelSize(width: 560, height: 520)
+            : TaskPanelSize(width: 120, height: 104)
     }
 }
 
