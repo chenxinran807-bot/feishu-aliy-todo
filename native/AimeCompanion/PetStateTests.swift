@@ -44,6 +44,22 @@ struct PetStateTests {
         assertEqual(TaskPanelVisualPolicy.summary(openCount: 14, overdueCount: 3), "14 项待办 · 3 项逾期", "task summary should use concise Chinese copy")
         assertEqual(TaskPanelVisualPolicy.previewTaskLimit, 3, "the always-on panel should show only three priority tasks")
         assertEqual(TaskPanelVisualPolicy.headline, "今天", "the lightweight panel should use the approved native headline")
+        let groupedPreview = TaskPanelVisualPolicy.groupedPreview(
+            tasks: [
+                AimeTask(id: "normal", title: "普通任务", status: "waiting", dueDate: "2026-06-30", project: "AI", sourceUrl: nil),
+                AimeTask(id: "p0", title: "紧急任务", status: "open", dueDate: "2026-06-23", project: "AI", sourceUrl: nil),
+                AimeTask(id: "early", title: "逾期任务", status: "open", dueDate: "2026-06-21 18:00:00", project: "AI", sourceUrl: nil),
+                AimeTask(id: "extra", title: "超出预览限制", status: "open", dueDate: nil, project: "AI", sourceUrl: nil),
+                AimeTask(id: "done", title: "已完成", status: "done", dueDate: "2026-06-20", project: "AI", sourceUrl: nil),
+            ],
+            priorities: ["p0": "P0", "normal": "P2", "early": "P2"],
+            today: today
+        )
+        assertEqual(groupedPreview.priority.map(\.id), ["p0", "early"], "P0 and overdue tasks should be handled first")
+        assertEqual(groupedPreview.next.map(\.id), ["normal"], "remaining preview tasks should appear next")
+        assertEqual(TaskPanelVisualPolicy.subtitle(openCount: 4, syncSucceeded: true), "4 项待办 · 飞书已同步", "subtitle should combine count and sync state")
+        assertEqual(TaskPanelVisualPolicy.subtitle(openCount: 4, syncSucceeded: false), "4 项待办 · 等待飞书同步", "subtitle should explain pending sync")
+        assertEqual(TaskPanelVisualPolicy.showsDashboardStats, false, "reminders mode must not render dashboard cards")
         assertEqual(TaskPanelWindowPolicy.minimumSize(isExpanded: false), TaskPanelSize(width: 120, height: 104), "collapsed widgets must be allowed to shrink below expanded minimums")
         assertEqual(TaskPanelWindowPolicy.minimumSize(isExpanded: true), TaskPanelSize(width: 320, height: 220), "expanded panels should keep a usable minimum size")
 

@@ -249,9 +249,15 @@ struct LocalPreferences: Codable, Equatable {
     }
 }
 
+struct TaskPanelGroups: Equatable {
+    let priority: [AimeTask]
+    let next: [AimeTask]
+}
+
 struct TaskPanelVisualPolicy {
     static let previewTaskLimit = 3
     static let headline = "今天"
+    static let showsDashboardStats = false
 
     static func usesFeishuNativeLayout(displayStyle: String) -> Bool {
         true
@@ -261,6 +267,33 @@ struct TaskPanelVisualPolicy {
         overdueCount > 0
             ? "\(openCount) 项待办 · \(overdueCount) 项逾期"
             : "\(openCount) 项待办"
+    }
+
+    static func subtitle(openCount: Int, syncSucceeded: Bool) -> String {
+        "\(openCount) 项待办 · \(syncSucceeded ? "飞书已同步" : "等待飞书同步")"
+    }
+
+    static func groupedPreview(tasks: [AimeTask], priorities: [String: String], today: String) -> TaskPanelGroups {
+        var priorityTasks: [AimeTask] = []
+        var nextTasks: [AimeTask] = []
+        var seenTaskIds: Set<String> = []
+
+        for task in tasks where task.status == "open" || task.status == "waiting" {
+            guard seenTaskIds.insert(task.id).inserted else { continue }
+            let dueDate = task.dueDate.map { String($0.prefix(10)) }
+            if priorities[task.id] == "P0" || dueDate.map({ $0 < today }) == true {
+                priorityTasks.append(task)
+            } else {
+                nextTasks.append(task)
+            }
+        }
+
+        let previewPriority = Array(priorityTasks.prefix(previewTaskLimit))
+        let remainingLimit = previewTaskLimit - previewPriority.count
+        return TaskPanelGroups(
+            priority: previewPriority,
+            next: Array(nextTasks.prefix(remainingLimit))
+        )
     }
 }
 
