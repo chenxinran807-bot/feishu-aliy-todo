@@ -263,12 +263,6 @@ struct TaskPanelVisualPolicy {
         true
     }
 
-    static func summary(openCount: Int, overdueCount: Int) -> String {
-        overdueCount > 0
-            ? "\(openCount) 项待办 · \(overdueCount) 项逾期"
-            : "\(openCount) 项待办"
-    }
-
     static func subtitle(openCount: Int, syncSucceeded: Bool) -> String {
         "\(openCount) 项待办 · \(syncSucceeded ? "飞书已同步" : "等待飞书同步")"
     }

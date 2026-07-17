@@ -41,7 +41,6 @@ struct PetStateTests {
         assertEqual(LocalPreferences().panelDesignVersion, 2, "new preferences should use the lightweight panel design")
         assertEqual(TaskPanelVisualPolicy.usesFeishuNativeLayout(displayStyle: "refined"), true, "refined mode should use the Feishu-native layout")
         assertEqual(TaskPanelVisualPolicy.usesFeishuNativeLayout(displayStyle: "cute"), true, "legacy style values should not restore the old card layout")
-        assertEqual(TaskPanelVisualPolicy.summary(openCount: 14, overdueCount: 3), "14 项待办 · 3 项逾期", "task summary should use concise Chinese copy")
         assertEqual(TaskPanelVisualPolicy.previewTaskLimit, 3, "the always-on panel should show only three priority tasks")
         assertEqual(TaskPanelVisualPolicy.headline, "今天", "the lightweight panel should use the approved native headline")
         let groupedPreview = TaskPanelVisualPolicy.groupedPreview(

@@ -1492,9 +1492,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func panelCornerRadius() -> CGFloat {
+        if isExpanded { return 18 }
         switch preferences.displayStyle {
         case "minimal": return 10
-        case "cute": return usesCompactExpandedLayout() ? 18 : scaledCute(30)
+        case "cute": return scaledCute(30)
         default: return 18
         }
     }
