@@ -109,6 +109,10 @@ final class ResizeHandleView: NSView {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let defaultBaseURL = "https://bytedance.larkoffice.com/base/F4k1bKUkRaIafPsKxP2cVAyEnwJ?table=tblllGcOFXODLI5I&view=vewBgeF8ZA"
     private let defaultAimeAssistantURL = "https://applink.feishu.cn/client/chat/open?openChatId=oc_31661171e477fd90c1d62de8e2f1a84d"
+    private let feishuBlue = NSColor(calibratedRed: 0.20, green: 0.44, blue: 1.00, alpha: 1)
+    private let dangerRed = NSColor(calibratedRed: 0.96, green: 0.29, blue: 0.27, alpha: 1)
+    private let subtleSurface = NSColor(calibratedWhite: 0.96, alpha: 1)
+    private let divider = NSColor.separatorColor.withAlphaComponent(0.35)
 
     private var window: NSWindow!
     private var statusItem: NSStatusItem!
@@ -577,81 +581,93 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         rootStack.addArrangedSubview(lightweightFeishuPanel(
-            tasks: groupedTasks(from: sortedTasks),
-            openCount: actionableTasks.count,
-            overdueCount: overdueTasks.count
+            tasks: sortedTasks,
+            openCount: actionableTasks.count
         ))
     }
 
-    private func lightweightFeishuPanel(tasks: [AimeTask], openCount: Int, overdueCount: Int) -> NSView {
+    private func lightweightFeishuPanel(tasks: [AimeTask], openCount: Int) -> NSView {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 7
+        stack.spacing = 4
+        stack.addArrangedSubview(remindersHeader(openCount: openCount))
 
-        stack.addArrangedSubview(label(TaskPanelVisualPolicy.headline, size: 18, weight: .bold))
-        stack.addArrangedSubview(label(todaySubtitle(), size: 10, color: mutedColor()))
-        stack.addArrangedSubview(lightweightStats(openCount: openCount, overdueCount: overdueCount))
-
-        let openTasks = Array(tasks.filter { isActionableStatus($0.status) }.prefix(TaskPanelVisualPolicy.previewTaskLimit))
-        if openTasks.isEmpty {
-            stack.addArrangedSubview(label("今天已经清空", size: 13, weight: .medium, color: mutedColor()))
-        } else {
-            openTasks.enumerated().forEach { index, task in
-                stack.addArrangedSubview(lightweightTaskRow(task))
-                if index < openTasks.count - 1 {
-                    let separator = NSBox()
-                    separator.boxType = .separator
-                    separator.translatesAutoresizingMaskIntoConstraints = false
-                    separator.widthAnchor.constraint(equalToConstant: contentWidth()).isActive = true
-                    stack.addArrangedSubview(separator)
-                }
-            }
+        let groups = TaskPanelVisualPolicy.groupedPreview(
+            tasks: tasks,
+            priorities: preferences.priorityByTaskId,
+            today: todayKey()
+        )
+        if groups.priority.isEmpty && groups.next.isEmpty {
+            stack.addArrangedSubview(label("今天已经清空", size: 13, weight: .regular, color: mutedColor()))
+        }
+        if !groups.priority.isEmpty {
+            stack.addArrangedSubview(sectionLabel("优先处理"))
+            addReminderRows(groups.priority, to: stack)
+        }
+        if !groups.next.isEmpty {
+            stack.addArrangedSubview(sectionLabel("接下来"))
+            addReminderRows(groups.next, to: stack)
         }
         return stack
     }
 
-    private func todaySubtitle() -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "M 月 d 日，EEEE"
-        let sync = lastSyncSucceeded ? "飞书已同步" : "等待飞书同步"
-        return "\(formatter.string(from: Date())) · \(sync)"
-    }
-
-    private func lightweightStats(openCount: Int, overdueCount: Int) -> NSView {
+    private func remindersHeader(openCount: Int) -> NSView {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
-        row.spacing = 6
-        let statWidth = max(120, (contentWidth() - 6) / 2)
-        row.addArrangedSubview(lightweightStat(value: openCount, labelText: "今日任务", color: NSColor.controlAccentColor, width: statWidth))
-        row.addArrangedSubview(lightweightStat(value: overdueCount, labelText: "已经逾期", color: NSColor.systemRed, width: statWidth))
+        row.spacing = 8
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.widthAnchor.constraint(equalToConstant: contentWidth()).isActive = true
+
+        let copy = NSStackView()
+        copy.orientation = .vertical
+        copy.alignment = .leading
+        copy.spacing = 2
+        copy.addArrangedSubview(label(TaskPanelVisualPolicy.headline, size: 19, weight: .semibold))
+        copy.addArrangedSubview(label(
+            TaskPanelVisualPolicy.subtitle(openCount: openCount, syncSucceeded: lastSyncSucceeded),
+            size: 10,
+            color: mutedColor()
+        ))
+        copy.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let add = NSButton(title: "+", target: self, action: #selector(addTaskClicked))
+        add.isBordered = false
+        add.font = NSFont.systemFont(ofSize: 19, weight: .regular)
+        add.contentTintColor = feishuBlue
+        add.toolTip = "新增待办"
+        add.translatesAutoresizingMaskIntoConstraints = false
+        add.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        add.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        add.setContentHuggingPriority(.required, for: .horizontal)
+
+        row.addArrangedSubview(copy)
+        row.addArrangedSubview(add)
         return row
     }
 
-    private func lightweightStat(value: Int, labelText: String, color: NSColor, width: CGFloat) -> NSView {
-        let row = NSStackView()
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 5
-        row.addArrangedSubview(label(String(value), size: 16, weight: .bold, color: color))
-        row.addArrangedSubview(label(labelText, size: 10, color: mutedColor()))
+    private func sectionLabel(_ text: String) -> NSView {
+        let field = label(text, size: 10, weight: .semibold, color: mutedColor())
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.heightAnchor.constraint(equalToConstant: 12).isActive = true
+        return field
+    }
 
-        let surface = NSView()
-        surface.wantsLayer = true
-        surface.layer?.backgroundColor = NSColor(calibratedWhite: 0.96, alpha: 0.92).cgColor
-        surface.layer?.cornerRadius = 9
-        row.translatesAutoresizingMaskIntoConstraints = false
-        surface.addSubview(row)
-        NSLayoutConstraint.activate([
-            surface.widthAnchor.constraint(equalToConstant: width),
-            surface.heightAnchor.constraint(equalToConstant: 34),
-            row.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 9),
-            row.trailingAnchor.constraint(lessThanOrEqualTo: surface.trailingAnchor, constant: -8),
-            row.centerYAnchor.constraint(equalTo: surface.centerYAnchor),
-        ])
-        return surface
+    private func addReminderRows(_ tasks: [AimeTask], to stack: NSStackView) {
+        tasks.enumerated().forEach { index, task in
+            stack.addArrangedSubview(lightweightTaskRow(task))
+            if index < tasks.count - 1 {
+                let separator = NSView()
+                separator.wantsLayer = true
+                separator.layer?.backgroundColor = divider.cgColor
+                separator.translatesAutoresizingMaskIntoConstraints = false
+                separator.widthAnchor.constraint(equalToConstant: contentWidth() - 21).isActive = true
+                separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
+                stack.addArrangedSubview(separator)
+                stack.setCustomSpacing(0, after: separator)
+            }
+        }
     }
 
     private func lightweightTaskRow(_ task: AimeTask) -> NSView {
@@ -661,7 +677,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         row.spacing = 7
         row.translatesAutoresizingMaskIntoConstraints = false
         row.widthAnchor.constraint(equalToConstant: contentWidth()).isActive = true
-        row.heightAnchor.constraint(equalToConstant: 25).isActive = true
+        row.heightAnchor.constraint(equalToConstant: 36).isActive = true
 
         let check = AimeActionButton(title: "", target: self, action: #selector(completeTask(_:)))
         check.payload = task.id
@@ -670,18 +686,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         check.layer?.backgroundColor = NSColor.clear.cgColor
         check.layer?.borderWidth = 1.5
         check.layer?.borderColor = NSColor.tertiaryLabelColor.cgColor
-        check.layer?.cornerRadius = 6
+        check.layer?.cornerRadius = 7
         check.translatesAutoresizingMaskIntoConstraints = false
-        check.widthAnchor.constraint(equalToConstant: 12).isActive = true
-        check.heightAnchor.constraint(equalToConstant: 12).isActive = true
+        check.widthAnchor.constraint(equalToConstant: 14).isActive = true
+        check.heightAnchor.constraint(equalToConstant: 14).isActive = true
 
-        let title = label(task.title, size: 12, weight: .regular)
+        let isPriority = preferences.priorityByTaskId[task.id] == "P0"
+        let title = label(task.title, size: 13, weight: isPriority ? .medium : .regular)
         title.lineBreakMode = .byTruncatingTail
+        title.maximumNumberOfLines = 1
         let clickable = clickableTaskTitle(task, content: title)
         clickable.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         clickable.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        let meta = label(lightweightTaskMeta(task), size: 10, color: mutedColor())
+        let meta = reminderMetadata(task)
         meta.setContentCompressionResistancePriority(.required, for: .horizontal)
         meta.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -691,12 +709,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return row
     }
 
-    private func lightweightTaskMeta(_ task: AimeTask) -> String {
-        guard let dueDate = task.dueDate, !dueDate.isEmpty else { return "飞书" }
-        if dueDate.hasPrefix(todayKey()), dueDate.count >= 16 {
-            return String(dueDate.dropFirst(11).prefix(5))
-        }
-        return String(dueDate.prefix(10))
+    private func reminderMetadata(_ task: AimeTask) -> NSView {
+        let isOverdue = task.dueDate.map { !$0.isEmpty && String($0.prefix(10)) < todayKey() } ?? false
+        let field = label(
+            TaskPanelVisualPolicy.metadata(dueDate: task.dueDate, today: todayKey()),
+            size: 10,
+            color: isOverdue ? dangerRed : NSColor.tertiaryLabelColor
+        )
+        field.maximumNumberOfLines = 1
+        field.translatesAutoresizingMaskIntoConstraints = false
+
+        let pill = NSView()
+        pill.wantsLayer = true
+        pill.layer?.backgroundColor = subtleSurface.cgColor
+        pill.layer?.cornerRadius = 6
+        pill.translatesAutoresizingMaskIntoConstraints = false
+        pill.addSubview(field)
+        NSLayoutConstraint.activate([
+            field.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 6),
+            field.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -6),
+            field.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+            pill.heightAnchor.constraint(equalToConstant: 20),
+        ])
+        return pill
     }
 
     private func resizeHandle() -> NSView {
@@ -904,31 +939,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case "P2": return 1
         default: return 0
         }
-    }
-
-    private func headerRow(openCount: Int, overdueCount: Int) -> NSView {
-        let row = NSStackView()
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 8
-
-        let summary = label(TaskPanelVisualPolicy.summary(openCount: openCount, overdueCount: overdueCount), size: 17, weight: .semibold)
-        let titleStack = NSStackView()
-        titleStack.orientation = .vertical
-        titleStack.spacing = 3
-        titleStack.addArrangedSubview(label("飞书待办", size: 12, weight: .semibold, color: mutedColor()))
-        titleStack.addArrangedSubview(summary)
-        let collapse = NSButton(title: "收起", target: self, action: #selector(collapseWidget))
-        collapse.bezelStyle = .rounded
-        collapse.controlSize = .small
-
-        row.addArrangedSubview(titleStack)
-        row.addArrangedSubview(toolbarButton(title: "+", toolTip: "新增待办", action: #selector(addTaskClicked)))
-        let more = menuButton(title: "•••", action: #selector(showHeaderMoreMenu(_:)))
-        more.toolTip = "更多操作"
-        row.addArrangedSubview(more)
-        row.addArrangedSubview(collapse)
-        return row
     }
 
     private func toolbarButton(title: String, toolTip: String, action: Selector) -> NSButton {
@@ -1669,19 +1679,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         pullLatestTasks()
         reloadTasks()
         showWidget()
-    }
-
-    @objc private func showHeaderMoreMenu(_ sender: AimeMenuButton) {
-        let menu = NSMenu()
-        addMenuItem("新增待办", to: menu, action: #selector(addTaskClicked))
-        menu.addItem(NSMenuItem.separator())
-        addMenuItem("打开多维表格", to: menu, action: #selector(openAimeBase))
-        addMenuItem("打开飞书机器人", to: menu, action: #selector(openAimeAssistant))
-        menu.addItem(NSMenuItem.separator())
-        addMenuItem(showingHiddenTasks ? "收起隐藏任务" : "显示隐藏任务", to: menu, action: #selector(toggleShowHiddenTasks))
-        addMenuItem("重置面板尺寸", to: menu, action: #selector(resetExpandedPanelSize))
-        addMenuItem("刷新", to: menu, action: #selector(refreshClicked))
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 2), in: sender)
     }
 
     @objc private func showTaskMoreMenu(_ sender: AimeMenuButton) {

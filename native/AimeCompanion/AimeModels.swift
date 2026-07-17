@@ -273,6 +273,14 @@ struct TaskPanelVisualPolicy {
         "\(openCount) 项待办 · \(syncSucceeded ? "飞书已同步" : "等待飞书同步")"
     }
 
+    static func metadata(dueDate: String?, today: String) -> String {
+        guard let dueDate, !dueDate.isEmpty else { return "飞书" }
+        if dueDate.hasPrefix(today), dueDate.count >= 16 {
+            return String(dueDate.dropFirst(11).prefix(5))
+        }
+        return String(dueDate.prefix(10))
+    }
+
     static func groupedPreview(tasks: [AimeTask], priorities: [String: String], today: String) -> TaskPanelGroups {
         var priorityTasks: [AimeTask] = []
         var nextTasks: [AimeTask] = []

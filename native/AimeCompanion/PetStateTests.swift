@@ -57,9 +57,20 @@ struct PetStateTests {
         )
         assertEqual(groupedPreview.priority.map(\.id), ["p0", "early"], "P0 and overdue tasks should be handled first")
         assertEqual(groupedPreview.next.map(\.id), ["normal"], "remaining preview tasks should appear next")
+        let deduplicatedPreview = TaskPanelVisualPolicy.groupedPreview(
+            tasks: [
+                AimeTask(id: "duplicate", title: "首个副本", status: "open", dueDate: nil, project: "AI", sourceUrl: nil),
+                AimeTask(id: "duplicate", title: "重复副本", status: "open", dueDate: nil, project: "AI", sourceUrl: nil),
+            ],
+            priorities: [:],
+            today: today
+        )
+        assertEqual(deduplicatedPreview.next.map(\.id), ["duplicate"], "preview tasks should be deduplicated by task ID")
         assertEqual(TaskPanelVisualPolicy.subtitle(openCount: 4, syncSucceeded: true), "4 项待办 · 飞书已同步", "subtitle should combine count and sync state")
         assertEqual(TaskPanelVisualPolicy.subtitle(openCount: 4, syncSucceeded: false), "4 项待办 · 等待飞书同步", "subtitle should explain pending sync")
         assertEqual(TaskPanelVisualPolicy.showsDashboardStats, false, "reminders mode must not render dashboard cards")
+        assertEqual(TaskPanelVisualPolicy.metadata(dueDate: "2026-07-17 10:30:00", today: "2026-07-17"), "10:30", "today tasks should show time")
+        assertEqual(TaskPanelVisualPolicy.metadata(dueDate: nil, today: "2026-07-17"), "飞书", "undated remote tasks should show source")
         assertEqual(TaskPanelWindowPolicy.minimumSize(isExpanded: false), TaskPanelSize(width: 120, height: 104), "collapsed widgets must be allowed to shrink below expanded minimums")
         assertEqual(TaskPanelWindowPolicy.minimumSize(isExpanded: true), TaskPanelSize(width: 320, height: 220), "expanded panels should keep a usable minimum size")
 
