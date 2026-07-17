@@ -276,6 +276,10 @@ struct TaskPanelVisualPolicy {
         return String(dueDate.prefix(10))
     }
 
+    static func effectivePriority(for task: AimeTask, priorities: [String: String]) -> String? {
+        priorities[task.id] ?? task.priority
+    }
+
     static func groupedPreview(tasks: [AimeTask], priorities: [String: String], today: String) -> TaskPanelGroups {
         var priorityTasks: [AimeTask] = []
         var nextTasks: [AimeTask] = []
@@ -284,7 +288,7 @@ struct TaskPanelVisualPolicy {
         for task in tasks where task.status == "open" || task.status == "waiting" {
             guard seenTaskIds.insert(task.id).inserted else { continue }
             let dueDate = task.dueDate.map { String($0.prefix(10)) }
-            if priorities[task.id] == "P0" || dueDate.map({ $0 < today }) == true {
+            if effectivePriority(for: task, priorities: priorities) == "P0" || dueDate.map({ $0 < today }) == true {
                 priorityTasks.append(task)
             } else {
                 nextTasks.append(task)

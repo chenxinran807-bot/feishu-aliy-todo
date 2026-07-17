@@ -696,7 +696,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         check.widthAnchor.constraint(equalToConstant: 28).isActive = true
         check.heightAnchor.constraint(equalToConstant: 28).isActive = true
 
-        let isPriority = preferences.priorityByTaskId[task.id] == "P0"
+        let isPriority = TaskPanelVisualPolicy.effectivePriority(
+            for: task,
+            priorities: preferences.priorityByTaskId
+        ) == "P0"
         let title = label(task.title, size: 13, weight: isPriority ? .medium : .regular)
         title.lineBreakMode = .byTruncatingTail
         title.maximumNumberOfLines = 1

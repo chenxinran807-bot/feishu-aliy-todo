@@ -59,6 +59,35 @@ struct PetStateTests {
         )
         assertEqual(groupedPreview.priority.map(\.id), ["p0", "early"], "P0 and overdue tasks should be handled first")
         assertEqual(groupedPreview.next.map(\.id), ["normal"], "remaining preview tasks should appear next")
+        let remotePriorityTask = AimeTask(
+            id: "remote-p0",
+            title: "飞书 P0",
+            status: "open",
+            dueDate: nil,
+            project: "AI",
+            priority: "P0",
+            sourceUrl: nil
+        )
+        assertEqual(
+            TaskPanelVisualPolicy.effectivePriority(for: remotePriorityTask, priorities: [:]),
+            "P0",
+            "remote task priority should apply when there is no local override"
+        )
+        assertEqual(
+            TaskPanelVisualPolicy.effectivePriority(for: remotePriorityTask, priorities: ["remote-p0": "P2"]),
+            "P2",
+            "local task priority should override the synced remote priority"
+        )
+        assertEqual(
+            TaskPanelVisualPolicy.groupedPreview(tasks: [remotePriorityTask], priorities: [:], today: today).priority.map(\.id),
+            ["remote-p0"],
+            "remote P0 tasks should appear in the priority group"
+        )
+        assertEqual(
+            TaskPanelVisualPolicy.groupedPreview(tasks: [remotePriorityTask], priorities: ["remote-p0": "P2"], today: today).next.map(\.id),
+            ["remote-p0"],
+            "local priority overrides should control reminder grouping"
+        )
         let deduplicatedPreview = TaskPanelVisualPolicy.groupedPreview(
             tasks: [
                 AimeTask(id: "duplicate", title: "首个副本", status: "open", dueDate: nil, project: "AI", sourceUrl: nil),
