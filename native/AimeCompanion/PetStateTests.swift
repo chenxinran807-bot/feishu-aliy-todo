@@ -39,10 +39,13 @@ struct PetStateTests {
         assertEqual(LocalPreferences().expandedPanelWidth, 360, "default panel width should remain compact")
         assertEqual(LocalPreferences().expandedPanelHeight, 260, "default panel height should remain compact")
         assertEqual(LocalPreferences().panelDesignVersion, 2, "new preferences should use the lightweight panel design")
-        assertEqual(TaskPanelVisualPolicy.usesFeishuNativeLayout(displayStyle: "refined"), true, "refined mode should use the Feishu-native layout")
-        assertEqual(TaskPanelVisualPolicy.usesFeishuNativeLayout(displayStyle: "cute"), true, "legacy style values should not restore the old card layout")
         assertEqual(TaskPanelVisualPolicy.previewTaskLimit, 3, "the always-on panel should show only three priority tasks")
         assertEqual(TaskPanelVisualPolicy.headline, "今天", "the lightweight panel should use the approved native headline")
+        assertEqual(
+            TaskPanelVisualPolicy.visibleTasks(tasks: tasks, hiddenTaskIds: ["hidden"]).map(\.id),
+            ["p0", "normal", "pinned", "early"],
+            "reminders panel should show every actionable non-hidden task regardless of legacy filters"
+        )
         let groupedPreview = TaskPanelVisualPolicy.groupedPreview(
             tasks: [
                 AimeTask(id: "normal", title: "普通任务", status: "waiting", dueDate: "2026-06-30", project: "AI", sourceUrl: nil),
@@ -67,7 +70,6 @@ struct PetStateTests {
         assertEqual(deduplicatedPreview.next.map(\.id), ["duplicate"], "preview tasks should be deduplicated by task ID")
         assertEqual(TaskPanelVisualPolicy.subtitle(openCount: 4, syncSucceeded: true), "4 项待办 · 飞书已同步", "subtitle should combine count and sync state")
         assertEqual(TaskPanelVisualPolicy.subtitle(openCount: 4, syncSucceeded: false), "4 项待办 · 等待飞书同步", "subtitle should explain pending sync")
-        assertEqual(TaskPanelVisualPolicy.showsDashboardStats, false, "reminders mode must not render dashboard cards")
         assertEqual(TaskPanelVisualPolicy.metadata(dueDate: "2026-07-17 10:30:00", today: "2026-07-17"), "10:30", "today tasks should show time")
         assertEqual(TaskPanelVisualPolicy.metadata(dueDate: nil, today: "2026-07-17"), "飞书", "undated remote tasks should show source")
         assertEqual(TaskPanelWindowPolicy.minimumSize(isExpanded: false), TaskPanelSize(width: 120, height: 104), "collapsed widgets must be allowed to shrink below expanded minimums")

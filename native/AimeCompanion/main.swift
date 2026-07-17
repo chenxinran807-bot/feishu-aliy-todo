@@ -111,7 +111,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let defaultAimeAssistantURL = "https://applink.feishu.cn/client/chat/open?openChatId=oc_31661171e477fd90c1d62de8e2f1a84d"
     private let feishuBlue = NSColor(calibratedRed: 0.20, green: 0.44, blue: 1.00, alpha: 1)
     private let dangerRed = NSColor(calibratedRed: 0.96, green: 0.29, blue: 0.27, alpha: 1)
-    private let subtleSurface = NSColor(calibratedWhite: 0.96, alpha: 1)
+    private let subtleSurface = NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return isDark
+            ? NSColor.controlBackgroundColor.withAlphaComponent(0.72)
+            : NSColor(calibratedWhite: 0.96, alpha: 1)
+    }
     private let divider = NSColor.separatorColor.withAlphaComponent(0.35)
 
     private var window: NSWindow!
@@ -559,10 +564,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         let actionableTasks = tasks.filter { isActionableStatus($0.status) }
-        let filteredTasks = applyFilters(tasks)
-        let visibleTasks = filteredTasks.filter { task in
-            showingHiddenTasks || !preferences.hiddenTaskIds.contains(task.id)
-        }
+        let visibleTasks = TaskPanelVisualPolicy.visibleTasks(
+            tasks: tasks,
+            hiddenTaskIds: preferences.hiddenTaskIds
+        )
         let overdueTasks = actionableTasks.filter { task in
             guard let dueDate = task.dueDate else { return false }
             return dueDate < todayKey()
@@ -582,7 +587,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         rootStack.addArrangedSubview(lightweightFeishuPanel(
             tasks: sortedTasks,
-            openCount: actionableTasks.count
+            openCount: visibleTasks.count
         ))
     }
 
@@ -682,14 +687,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let check = AimeActionButton(title: "", target: self, action: #selector(completeTask(_:)))
         check.payload = task.id
         check.isBordered = false
-        check.wantsLayer = true
-        check.layer?.backgroundColor = NSColor.clear.cgColor
-        check.layer?.borderWidth = 1.5
-        check.layer?.borderColor = NSColor.tertiaryLabelColor.cgColor
-        check.layer?.cornerRadius = 7
+        check.image = NSImage(systemSymbolName: "circle", accessibilityDescription: "完成")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .regular))
+        check.imagePosition = .imageOnly
+        check.contentTintColor = NSColor.tertiaryLabelColor
+        check.toolTip = "标记完成"
         check.translatesAutoresizingMaskIntoConstraints = false
-        check.widthAnchor.constraint(equalToConstant: 14).isActive = true
-        check.heightAnchor.constraint(equalToConstant: 14).isActive = true
+        check.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        check.heightAnchor.constraint(equalToConstant: 28).isActive = true
 
         let isPriority = preferences.priorityByTaskId[task.id] == "P0"
         let title = label(task.title, size: 13, weight: isPriority ? .medium : .regular)

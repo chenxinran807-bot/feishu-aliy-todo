@@ -257,10 +257,11 @@ struct TaskPanelGroups: Equatable {
 struct TaskPanelVisualPolicy {
     static let previewTaskLimit = 3
     static let headline = "今天"
-    static let showsDashboardStats = false
 
-    static func usesFeishuNativeLayout(displayStyle: String) -> Bool {
-        true
+    static func visibleTasks(tasks: [AimeTask], hiddenTaskIds: Set<String>) -> [AimeTask] {
+        tasks.filter { task in
+            (task.status == "open" || task.status == "waiting") && !hiddenTaskIds.contains(task.id)
+        }
     }
 
     static func subtitle(openCount: Int, syncSucceeded: Bool) -> String {
